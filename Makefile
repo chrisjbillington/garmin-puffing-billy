@@ -39,12 +39,13 @@ $(PRG): $(SOURCES) | $(OUT)
 $(OUT):
 	@mkdir -p $(OUT)
 
-# Start the simulator if it isn't already up. It has to be running before
-# monkeydo will talk to it.
+# Blocks. Run it in its own terminal and leave it there; `run` will not start
+# the simulator for you, and will not shut it down.
 sim:
-	@pgrep -x simulator >/dev/null || { $(BIN)/connectiq >/dev/null 2>&1 & sleep 4; }
+	$(BIN)/connectiq
 
-run: build sim
+run: build
+	@pgrep -x simulator >/dev/null || { echo "Simulator not running - start it with 'make sim' in another terminal"; exit 1; }
 	$(BIN)/monkeydo $(PRG) $(DEVICE)
 
 # Store-ready .iq bundle (all products in the manifest, signed).
