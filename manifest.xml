@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        entry="PuffingBillyApp"
+        id="20390A105E434F35A0D71789C9C2B2C5"
+        launcherIcon="@Drawables.LauncherIcon"
+        minApiLevel="5.2.0"
+        name="@Strings.AppName"
+        type="datafield">
+
+        <iq:products>
+            <iq:product id="venu441mm"/>
+        </iq:products>
+
+        <iq:permissions/>
+
+        <!-- When you get to the real thing, you'll need these:
+
+        <iq:permissions>
+            <iq:uses-permission id="ActivityControl"/>   setWorkout()
+            <iq:uses-permission id="Positioning"/>       currentLocation, for waypoints
+        </iq:permissions>
+
+        and this, to stop the field being offered for every sport in the
+        post-install activity-association flow:
+
+        <iq:activityFilter>
+            <iq:activity sport="Toybox.Activity.SPORT_RUNNING" subsport="Toybox.Activity.SUB_SPORT_GENERIC"/>
+        </iq:activityFilter>
+        -->
+
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>
