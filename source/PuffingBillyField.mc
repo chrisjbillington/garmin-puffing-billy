@@ -114,30 +114,6 @@ class PuffingBillyField extends WatchUi.DataField {
         }
     }
 
-    //! A duration in seconds as h:mm:ss, dropping the hours when there are none.
-    private function timeString(t as Float) as String {
-        var whole = (t + 0.5).toNumber();
-        var mm = (whole / 60) % 60;
-        var ss = whole % 60;
-        if (whole >= 3600) {
-            return (whole / 3600).format("%d") + ":" + mm.format("%02d") +
-                ":" + ss.format("%02d");
-        }
-        return mm.format("%d") + ":" + ss.format("%02d");
-    }
-
-    //! Projected finish time in seconds: what is on the clock now, plus the
-    //! whole rest of the course run exactly to target pace. The current
-    //! segment's remainder can be negative — past the gate but not yet through
-    //! it — which is correct, since that distance no longer has to be run.
-    private function projectedS() as Float {
-        var left = remainingM() / 1000.0 * _paces[_next];
-        for (var i = _next + 1; i < _lengths.size(); i += 1) {
-            left += _lengths[i] / 1000.0 * _paces[i];
-        }
-        return _timerMs / 1000.0 + left;
-    }
-
     //! A pace in seconds per km as m:ss, or a placeholder when there is no
     //! sensible pace to show — before the runner has moved, or so slow that the
     //! number would be meaningless anyway.
@@ -166,17 +142,6 @@ class PuffingBillyField extends WatchUi.DataField {
             return null;
         }
         return 1000.0 / speed;
-    }
-
-    //! A one-line preview of the segment after this one, so its length and pace
-    //! arrive before the gate does rather than at it.
-    private function nextLine() as String {
-        var i = _next + 1;
-        if (i >= _names.size()) {
-            return "next: finish";
-        }
-        return "next: " + (_lengths[i] / 1000.0).format("%.2f") +
-            " km @ " + paceString(_paces[i]);
     }
 
     //! Distance still to run in this segment, in metres. Goes negative once the
@@ -344,6 +309,31 @@ class PuffingBillyField extends WatchUi.DataField {
             ((colour & 0xFF) / DIM);
     }
 
+    //! Radius of the inner edge of the ring — the circle everything else has to
+    //! stay inside.
+    private function ringInnerR(w as Number, h as Number) as Number {
+        return (w < h ? w : h) / 2 - w / RING_INNER_DIV;
+    }
+
+    //! A horizontal divider at y, spanning the middle three fifths of the chord
+    //! the ring encloses at that height.
+    //!
+    //! Measured off the ring rather than off the screen so the rules always stop
+    //! short of it instead of running under it, and so they draw in shorter as
+    //! they approach the top and bottom of the face — which reads as dividers
+    //! following the shape of the display rather than as a box drawn across it.
+    private function rule(dc as Dc, w as Number, h as Number, y as Number) as Void {
+        var r = ringInnerR(w, h);
+        var dy = y - h / 2;
+        if (dy < 0) { dy = -dy; }
+        if (dy >= r) {
+            return;
+        }
+        // Three fifths of the full chord, so three tenths of it either side.
+        var half = Math.sqrt(r * r - dy * dy) * 3.0 / 5.0;
+        dc.drawLine(w / 2 - half, y, w / 2 + half, y);
+    }
+
     //! Progress ring around the rim, with a tick at every gate.
     //!
     //! Every segment is coloured by its *target* pace against the course
@@ -359,7 +349,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var pen = w / RING_PEN_DIV;
         var cx = w / 2;
         var cy = h / 2;
-        var r = (w < h ? w : h) / 2 - w / RING_INNER_DIV + pen / 2;
+        var r = ringInnerR(w, h) + pen / 2;
         var mean = _planS / (_courseM / 1000.0);
 
         dc.setPenWidth(pen);
@@ -456,13 +446,13 @@ class PuffingBillyField extends WatchUi.DataField {
         // smallest of those, so a notch down leaves the number fonts entirely.
         var remaining = remainingM() / 1000.0;
         drawPair(
-            dc, w / 2, h * 11 / 100, w / 40,
+            dc, w / 2, h * 14 / 100, w / 40,
             remaining.format("%.2f"), Graphics.FONT_LARGE,
             "km", Graphics.FONT_XTINY
         );
 
         drawPair(
-            dc, w / 2, h * 23 / 100, w / 40,
+            dc, w / 2, h * 27 / 100, w / 40,
             "to", Graphics.FONT_XTINY,
             _names[_next], Graphics.FONT_TINY
         );
@@ -470,63 +460,43 @@ class PuffingBillyField extends WatchUi.DataField {
         // Three paces straddling the middle of the face, each label centred
         // over its value, columns centred on the sixths.
         //
-        // FONT_MEDIUM is the largest that clears a third of a 390px screen with
-        // room to spare: a five-character pace like 12:34 takes 113px of the
-        // 130px a column gets, where FONT_LARGE would take 130px exactly and
-        // FONT_NUMBER_MILD 168px.
+        // FONT_LARGE fills the third of a 390px screen a column gets: a
+        // five-character pace like 12:34 takes 130px of the 130px available, so
+        // adjacent columns touch in the worst case. Real paces on this course
+        // are four characters and leave a comfortable gap; the five-character
+        // ones are the "--:--" placeholder and a pace slow enough that the
+        // columns running together is the least of it.
         var labels = ["target", "segment", "pace"];
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
 
-        dc.drawText(w / 2, h * 33 / 100, Graphics.FONT_XTINY, nextLine(), centre);
-
         for (var i = 0; i < 3; i += 1) {
             var x = w * (1 + 2 * i) / 6;
             dc.drawText(
-                x, h * 43 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
+                x, h * 44 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
             );
             dc.drawText(
-                x, h * 55 / 100, Graphics.FONT_MEDIUM,
+                x, h * 57 / 100, Graphics.FONT_LARGE,
                 paceString(paces[i] as Float?), centre
             );
         }
 
-        // Rules under the heading, the preview and the pace row. Full width, so
-        // a round screen clips the ends — which is what makes them read as
-        // dividers rather than as boxes. The offsets clear each row's baseline
-        // rather than its line box: fonts here carry several pixels of descent
-        // that none of these strings actually use.
-        var projected = projectedS();
-        dc.drawText(
-            w / 2, h * 67 / 100, Graphics.FONT_XTINY,
-            "projected: " + timeString(projected), centre
-        );
-
-        // Positive means the projection lands inside the plan.
-        var delta = _planS - projected;
-        dc.drawText(
-            w / 2, h * 75 / 100, Graphics.FONT_XTINY,
-            timeString(delta < 0 ? -delta : delta) +
-                (delta < 0 ? " behind" : " ahead"),
-            centre
-        );
-
+        // A number font for the rate itself: it is the one value here read at a
+        // glance mid-effort rather than studied, and the bottom of the face has
+        // the room for it now.
         var hr = _heartRate;
-        dc.drawText(
-            w / 2, h * 88 / 100, Graphics.FONT_TINY,
-            (hr == null ? "---" : hr.format("%d")) + " BPM", centre
+        drawPair(
+            dc, w / 2, h * 83 / 100, w / 40,
+            (hr == null ? "---" : hr.format("%d")), Graphics.FONT_NUMBER_MILD,
+            "BPM", Graphics.FONT_XTINY
         );
 
-        // Rules under the heading, the preview, the pace row and the pacing
-        // block. Full width, so a round screen clips the ends — which is what
-        // makes them read as dividers rather than as boxes. The offsets clear
-        // each row's baseline rather than its line box: fonts here carry
-        // several pixels of descent that none of these strings actually use.
+        // Rules under the heading and under the pace row. The offsets clear each
+        // row's baseline rather than its line box: fonts here carry several
+        // pixels of descent that none of these strings actually use.
         dc.setPenWidth(1);
-        dc.drawLine(0, h * 28 / 100, w, h * 28 / 100);
-        dc.drawLine(0, h * 38 / 100, w, h * 38 / 100);
-        dc.drawLine(0, h * 62 / 100, w, h * 62 / 100);
-        dc.drawLine(0, h * 80 / 100, w, h * 80 / 100);
+        rule(dc, w, h, h * 35 / 100);
+        rule(dc, w, h, h * 70 / 100);
 
         // Last, because it leaves the pen width and colour where it likes.
         drawRing(dc, w, h, fg);
