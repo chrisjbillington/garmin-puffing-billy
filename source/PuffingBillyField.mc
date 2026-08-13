@@ -198,18 +198,11 @@ class PuffingBillyField extends WatchUi.DataField {
         return (d1 > 0) != (d2 > 0) && (d3 > 0) != (d4 > 0);
     }
 
-    //! Move on to the next segment.
-    //!
-    //! `startM` and `startMs` are the odometer and timer readings to treat as
-    //! the boundary: the actual ones at the moment of crossing when a gate
-    //! fired, or backdated ones when we gave up on it. Backdating the distance
-    //! keeps the whole OVERDISTANCE_M of slop from being charged to the next
-    //! segment, and the clock has to move with it — otherwise that segment
-    //! starts with distance already on it but no time, and its pace reads
-    //! absurdly fast for a kilometre afterwards.
-    private function advance(startM as Float, startMs as Number) as Void {
-        _segmentStartM = startM;
-        _segmentStartMs = startMs;
+    //! Move on to the next segment, taking the current odometer and timer
+    //! readings as the boundary.
+    private function advance() as Void {
+        _segmentStartM = _distanceM;
+        _segmentStartMs = _timerMs;
         _next += 1;
     }
 
@@ -245,7 +238,7 @@ class PuffingBillyField extends WatchUi.DataField {
 
             if (racing && prevLat != null && prevLon != null &&
                 crossedGate(_next, prevLon, prevLat, lon, lat)) {
-                advance(_distanceM, _timerMs);
+                advance();
                 return;
             }
         }
@@ -253,10 +246,7 @@ class PuffingBillyField extends WatchUi.DataField {
         // Deliberately outside the fix check above: the whole point of the
         // fallback is to keep the race moving when there is no fix to test.
         if (racing && remainingM() < -OVERDISTANCE_M) {
-            // Backdate the clock by however long the target pace says the
-            // overshoot should have taken, to match the backdated distance.
-            var slopMs = (OVERDISTANCE_M * _paces[_next]).toNumber();
-            advance(_segmentStartM + _lengths[_next], _timerMs - slopMs);
+            advance();
         }
     }
 
