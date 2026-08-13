@@ -17,6 +17,9 @@ wildly where the course has a sharp kink in it.
 Target pacing is calculated based on a flat pace and uphill/downhill pace penalty/bonus
 factor read from config.json and saved in segments.json
 
+Also writes out/resource.json, the subset of segments.json that goes on the watch, in
+the shape the data field wants it. See make_resource().
+
 """
 from pathlib import Path
 import json
@@ -35,8 +38,13 @@ OUT_DIR = THIS_DIR / 'out'
 CONFIG_FILE = THIS_DIR / "config.json"
 GPX_FILE = THIS_DIR / "official-course-2026.gpx"
 SEGMENTS_FILE = OUT_DIR / "segments.json"
+RESOURCE_FILE = OUT_DIR / "resource.json"
 
 R_EARTH = 6371008.8  # mean Earth radius, metres
+
+# Garmin's native coordinate unit, as used in .fit files: a signed 32-bit integer
+# with 2**31 semicircles to 180 degrees, i.e. a resolution of about 9 mm.
+SEMICIRCLES_PER_DEGREE = 2**31 / 180
 
 GATE_LENGTH = 200.0  # metres
 
@@ -262,6 +270,55 @@ def make_segments():
     print(f"Wrote {SEGMENTS_FILE}")
 
 
+def semicircles(degrees):
+    """Convert a coordinate in degrees to an integer number of semicircles."""
+    return round(degrees * SEMICIRCLES_PER_DEGREE)
+
+
+def make_resource():
+    """Write out/resource.json, the part of segments.json that goes on the watch.
+
+    The data field only needs what it draws or tests against: the segment names,
+    their lengths, their target paces, and the gates. The rest of segments.json is
+    either working (heading, elevation) or derivable on the watch (cumulative
+    distance is the running sum of the lengths), and a data field's memory budget
+    is small enough to bother leaving it behind.
+
+    Parallel arrays rather than segments.json's dict-of-dicts, for the same reason:
+    a Monkey C Dictionary costs per entry, and the nested form would put ten copies
+    of the same six key strings on the heap.
+
+    Coordinates go out as integer semicircles rather than degrees. A JSON resource's
+    numeric type is documented only as Numeric, and if the compiler makes a 32-bit
+    Float of a decimal literal then ~7 significant digits quantises a 145 degree
+    longitude at about a metre - the same scale as the gate geometry we're testing
+    against. Integers land in Number, which converts to Double exactly, so the
+    question doesn't arise. Lengths are whole metres for the same reason. Paces are
+    left as decimals: seconds per km needs about 5 significant digits, which is
+    comfortably inside what a Float holds either way.
+    """
+    segments = json.loads(SEGMENTS_FILE.read_text('utf8'))
+
+    resource = {
+        "names": list(segments),
+        "lengths": [round(seg["length"]) for seg in segments.values()],
+        "paces": [round(seg["pace"], 2) for seg in segments.values()],
+        # Four values per gate - left end then right end, as seen by a runner
+        # running the course - so segment i's gate is gates[4 * i : 4 * i + 4],
+        # as lat, lon, lat, lon.
+        "gates": [
+            semicircles(seg[end + coord])
+            for seg in segments.values()
+            for end in ("gate_left_", "gate_right_")
+            for coord in ("lat", "lon")
+        ],
+    }
+
+    RESOURCE_FILE.write_text(json.dumps(resource, indent=4), 'utf8')
+    print(f"Wrote {RESOURCE_FILE}")
+
+
 if __name__ == "__main__":
     OUT_DIR.mkdir(exist_ok=True)
     make_segments()
+    make_resource()
