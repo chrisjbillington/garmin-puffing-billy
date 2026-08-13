@@ -50,11 +50,12 @@ class PuffingBillyField extends WatchUi.DataField {
     //! 390px that is a 10px bar.
     private const BAR_PEN_DIV = 39;
 
-    //! The vertical rhythm, as percentages of the face height, and the pace
-    //! columns' offset either side of centre as a percentage of its width.
-    //! These are worth only what they are against each other: the rows are
-    //! placed by eye to sit clear of one another rather than derived from
-    //! anything, so they are gathered here to be tuned together.
+    //! The vertical rhythm, as percentages of the face height. These are worth
+    //! only what they are against each other: the rows are placed by eye to sit
+    //! clear of one another rather than derived from anything, so they are
+    //! gathered here to be tuned together. The pace columns are not among them
+    //! — their spacing is measured against the face at draw time, in
+    //! paceColumnOffset().
     private const Y_REMAINING = 14;
     private const Y_NAME = 27;
     private const Y_BAR = 35;
@@ -62,7 +63,18 @@ class PuffingBillyField extends WatchUi.DataField {
     private const Y_PACE_VALUE = 57;
     private const Y_RULE = 70;
     private const Y_HR = 83;
-    private const X_PACE_COL = 30;
+
+    //! The font every figure on the face is set in, as a height in pixels and a
+    //! scalable face. Scalable because the system fonts step straight from
+    //! FONT_LARGE at 61px to FONT_NUMBER_MILD at 97px, and these want to sit
+    //! between the two: at 70px the digits stand 43px, against 37px and 49px.
+    //!
+    //! Condensed because three four-character paces have to sit side by side
+    //! across the middle of the face. In Roboto proper they leave 8px between
+    //! columns even pushed out as far as the bezel clearance allows; condensed
+    //! digits are a sixth narrower, which opens that to 27px.
+    private const FIGURE_FONT_PX = 70;
+    private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
 
     //! The finished screen, which shares nothing with the rhythm above.
     private const Y_FINAL_KM = 40;
@@ -131,6 +143,10 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Heart rate in bpm. Null with no strap and no wrist reading yet.
     private var _heartRate as Number?;
 
+    //! The figure font, built once. Falls back to FONT_LARGE on a device that
+    //! cannot supply the face at the size asked for.
+    private var _figureFont as FontType;
+
     function initialize() {
         DataField.initialize();
 
@@ -151,6 +167,14 @@ class PuffingBillyField extends WatchUi.DataField {
         _segmentStartMs = 0;
         _speedMps = null;
         _heartRate = null;
+
+        _figureFont = Graphics.FONT_LARGE;
+        var scalable = Graphics.getVectorFont({
+            :face => FIGURE_FONT_FACE, :size => FIGURE_FONT_PX
+        });
+        if (scalable != null) {
+            _figureFont = scalable;
+        }
 
         var planS = 0.0;
         _courseM = 0.0;
@@ -296,6 +320,30 @@ class PuffingBillyField extends WatchUi.DataField {
         // toFloat() because sqrt() is typed as Float-or-Double, and a chord on a
         // 390px face has no need of the extra precision.
         return Math.sqrt(r * r - dy * dy).toFloat();
+    }
+
+    //! How far either side of centre the outer pace columns sit, so that they
+    //! stand as far apart as the face allows: the outer edge of an outer pace
+    //! lands exactly on the circle SAFE_INSET leaves.
+    //!
+    //! The row sits below the middle of the face, so it is its lowest ink that
+    //! comes nearest the bezel. paceString() only ever emits digits, a colon
+    //! and a dash, none of which descend, so that ink stops at the baseline
+    //! rather than at the bottom of the line box — worth the few pixels it
+    //! gives back, since the circle is closing fast by then.
+    //!
+    //! The labels are centred on the same columns and are the shorter row, so
+    //! they follow the paces out without needing to be measured themselves.
+    private function paceColumnOffset(dc as Dc, w as Number, h as Number) as Float {
+        // TEXT_JUSTIFY_VCENTER centres the line box on y, so the baseline is an
+        // ascent down from the top of it.
+        var baseline = h * Y_PACE_VALUE / 100
+            - Graphics.getFontHeight(_figureFont) / 2
+            + Graphics.getFontAscent(_figureFont);
+        // Every digit in this face is one width, so any four-character pace is
+        // as wide as the row ever gets.
+        var half = dc.getTextWidthInPixels("0:00", _figureFont) / 2.0;
+        return safeHalfWidthAt(w, h, baseline) - half;
     }
 
     //! Green through amber to red as a segment's target pace goes from
@@ -464,11 +512,13 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
-        // FONT_LARGE rather than a number font: FONT_NUMBER_MILD is the
-        // smallest of those, so a notch down leaves the number fonts entirely.
+        // The face is narrow this near the top, and this row is the widest of
+        // the three: the value runs to five characters once remainingM() goes
+        // negative on the approach to a gate, and "km" hangs off the end of it.
+        // That, rather than the rows below, is what holds its size down.
         drawValueUnit(
             dc, w, h * Y_REMAINING / 100,
-            (remainingM() / 1000.0).format("%.2f"), Graphics.FONT_LARGE, fg,
+            (remainingM() / 1000.0).format("%.2f"), _figureFont, fg,
             "km", labelColour
         );
 
@@ -478,18 +528,13 @@ class PuffingBillyField extends WatchUi.DataField {
         );
 
         // Three paces straddling the middle of the face, each label centred over
-        // its value, the columns X_PACE_COL either side of centre rather than
-        // out on the sixths — which pulls them in off the bezel without the
-        // four-character paces coming near each other.
-        //
-        // Sized for a four-character pace, which paceString() guarantees.
-        // Three of those side by side will not fit across the face in any of
-        // the number fonts, so FONT_LARGE is as large as this row goes.
+        // its value, the columns as far apart as they will go.
         var labels = ["target", "segment", "pace"];
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
+        var col = paceColumnOffset(dc, w, h);
 
         for (var i = 0; i < 3; i += 1) {
-            var x = w / 2 + (i - 1) * w * X_PACE_COL / 100;
+            var x = (w / 2 + (i - 1) * col).toNumber();
             dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
                 x, h * Y_PACE_LABEL / 100, Graphics.FONT_XTINY,
@@ -497,18 +542,17 @@ class PuffingBillyField extends WatchUi.DataField {
             );
             dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                x, h * Y_PACE_VALUE / 100, Graphics.FONT_LARGE,
+                x, h * Y_PACE_VALUE / 100, _figureFont,
                 paceString(paces[i] as Float?), centre
             );
         }
 
-        // A number font for the rate itself: it is the one value here read at a
-        // glance mid-effort rather than studied, and the bottom of the face has
-        // the room for it.
+        // Three digits and a short unit, low on the face where it is wide
+        // again: this row has room to spare at the shared size.
         var hr = _heartRate;
         drawValueUnit(
             dc, w, h * Y_HR / 100,
-            (hr == null ? "---" : hr.format("%d")), Graphics.FONT_NUMBER_MILD, fg,
+            (hr == null ? "---" : hr.format("%d")), _figureFont, fg,
             "BPM", labelColour
         );
 
