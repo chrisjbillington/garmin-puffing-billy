@@ -271,12 +271,16 @@ class PuffingBillyField extends WatchUi.DataField {
 
     //! A pace in seconds per km as m:ss, or a placeholder when there is no
     //! sensible pace to show — before the runner has moved, or so slow that the
-    //! number would be meaningless anyway.
+    //! number would be meaningless anyway. The minutes are always a single
+    //! digit, so the string is always four characters wide.
     private function paceString(paceS as Float?) as String {
-        if (paceS == null || paceS <= 0.0 || paceS > 3599.0) {
-            return "--:--";
+        if (paceS == null || paceS <= 0.0) {
+            return "-:--";
         }
         var whole = (paceS + 0.5).toNumber();
+        if (whole > 599) {
+            return "-:--";
+        }
         return (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
     }
 
@@ -478,10 +482,9 @@ class PuffingBillyField extends WatchUi.DataField {
         // out on the sixths — which pulls them in off the bezel without the
         // four-character paces coming near each other.
         //
-        // Sized for a four-character pace, since this course is never run at
-        // 10:00/km or worse. Three of those side by side will not fit across
-        // the face in any of the number fonts, so FONT_LARGE is as large as
-        // this row goes.
+        // Sized for a four-character pace, which paceString() guarantees.
+        // Three of those side by side will not fit across the face in any of
+        // the number fonts, so FONT_LARGE is as large as this row goes.
         var labels = ["target", "segment", "pace"];
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
 
