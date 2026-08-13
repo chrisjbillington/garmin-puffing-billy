@@ -14,7 +14,6 @@
 
         <iq:permissions>
             <iq:uses-permission id="Positioning"/>
-            <iq:uses-permission id="ActivityControl"/>
         </iq:permissions>
 
         <!-- When you get to the real thing, you'll also need this, to stop the

@@ -17,16 +17,6 @@ class PuffingBillyField extends WatchUi.DataField {
     //! would stall every later one for the rest of the race.
     private const OVERDISTANCE_M = 200.0;
 
-    //! Distance given to the workout step, in metres. setWorkout() takes only a
-    //! time or a distance duration — there is no "until the lap button" — so
-    //! the step is simply made far longer than any race, and never completes.
-    //! That is the run-indefinitely-at-this-pace behaviour we're after.
-    private const WORKOUT_DISTANCE_M = 100000;
-
-    //! Half-width of the pace target band, in seconds per km. The watch's own
-    //! out-of-range alerts fire outside it.
-    private const PACE_BAND_S = 5.0;
-
     private var _names as Array<String>;
     private var _lengths as Array<Number>;
     private var _paces as Array<Float>;
@@ -53,10 +43,15 @@ class PuffingBillyField extends WatchUi.DataField {
     //! segment fresh keeps that drift from compounding over thirteen km.
     private var _segmentStartM as Float;
 
-    //! Segment whose pace is currently loaded into the watch's workout target,
-    //! or -1 for none. Compared against _next so the target is pushed once per
-    //! segment rather than once per second.
-    private var _workoutSegment as Number;
+    //! Timer time, in milliseconds, and the reading of it at the start of the
+    //! current segment. Timer time rather than elapsed time, so that a pause at
+    //! a drink station doesn't count against the segment's pace.
+    private var _timerMs as Number;
+    private var _segmentStartMs as Number;
+
+    //! Current speed in metres per second, straight from Activity.Info. Null
+    //! when the watch has nothing to report yet.
+    private var _speedMps as Float?;
 
     function initialize() {
         DataField.initialize();
@@ -74,36 +69,39 @@ class PuffingBillyField extends WatchUi.DataField {
         _prevLon = null;
         _distanceM = 0.0;
         _segmentStartM = 0.0;
-        _workoutSegment = -1;
+        _timerMs = 0;
+        _segmentStartMs = 0;
+        _speedMps = null;
     }
 
-    //! Point the watch's own workout target at the current segment's pace, so
-    //! that its native out-of-range alerts do the nagging for us.
-    //!
-    //! Pace targets are speed targets, so the band inverts: the *slow* end of
-    //! the pace band is the *low* speed. FIT carries speed in millimetres per
-    //! second, which is what these Number fields want — 1000 m / P seconds is
-    //! 1e6/P mm/s.
-    private function setPaceTarget() as Void {
-        var pace = _paces[_next];
+    //! A pace in seconds per km as m:ss, or a placeholder when there is no
+    //! sensible pace to show — before the runner has moved, or so slow that the
+    //! number would be meaningless anyway.
+    private function paceString(paceS as Float?) as String {
+        if (paceS == null || paceS <= 0.0 || paceS > 3599.0) {
+            return "--:--";
+        }
+        var whole = (paceS + 0.5).toNumber();
+        return (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
+    }
 
-        var step = new Activity.WorkoutStep();
-        step.durationType = Activity.WORKOUT_STEP_DURATION_DISTANCE;
-        step.durationValue = WORKOUT_DISTANCE_M;
-        step.targetType = Activity.WORKOUT_STEP_TARGET_SPEED;
-        step.targetValueLow = (1000000.0 / (pace + PACE_BAND_S)).toNumber();
-        step.targetValueHigh = (1000000.0 / (pace - PACE_BAND_S)).toNumber();
+    //! Average pace over the part of the current segment run so far, in seconds
+    //! per km. Null until far enough into the segment to divide by.
+    private function segmentPaceS() as Float? {
+        var km = (_distanceM - _segmentStartM) / 1000.0;
+        if (km <= 0.0) {
+            return null;
+        }
+        return ((_timerMs - _segmentStartMs) / 1000.0) / km;
+    }
 
-        var info = new Activity.WorkoutStepInfo();
-        info.step = step;
-        info.name = _names[_next];
-        info.intensity = Activity.WORKOUT_INTENSITY_ACTIVE;
-
-        // The return value is documented as "true if the workout was set", but
-        // the simulator returns false even when it has written the workout
-        // correctly to GARMIN/Workouts/*.fit — verified by reading that file
-        // back. Ignored rather than logged, so it can't cry wolf again.
-        setWorkout([info], {:name => "Puffing Billy"});
+    //! Instantaneous pace, in seconds per km.
+    private function currentPaceS() as Float? {
+        var speed = _speedMps;
+        if (speed == null || speed <= 0.0) {
+            return null;
+        }
+        return 1000.0 / speed;
     }
 
     //! Distance still to run in this segment, in metres. Goes negative once the
@@ -116,12 +114,16 @@ class PuffingBillyField extends WatchUi.DataField {
 
     //! Move on to the next segment.
     //!
-    //! `startM` is the odometer reading to treat as the boundary: the reading
-    //! at the moment of crossing when a gate actually fired, or the nominal one
-    //! when we gave up on it. Using the nominal in that case keeps the whole
-    //! OVERDISTANCE_M of slop from being charged to the following segment.
-    private function advance(startM as Float) as Void {
+    //! `startM` and `startMs` are the odometer and timer readings to treat as
+    //! the boundary: the actual ones at the moment of crossing when a gate
+    //! fired, or backdated ones when we gave up on it. Backdating the distance
+    //! keeps the whole OVERDISTANCE_M of slop from being charged to the next
+    //! segment, and the clock has to move with it — otherwise that segment
+    //! starts with distance already on it but no time, and its pace reads
+    //! absurdly fast for a kilometre afterwards.
+    private function advance(startM as Float, startMs as Number) as Void {
         _segmentStartM = startM;
+        _segmentStartMs = startMs;
         _next += 1;
     }
 
@@ -169,6 +171,11 @@ class PuffingBillyField extends WatchUi.DataField {
         var d = info.elapsedDistance;
         _distanceM = (d == null) ? 0.0 : d;
 
+        var t = info.timerTime;
+        _timerMs = (t == null) ? 0 : t;
+
+        _speedMps = info.currentSpeed;
+
         var prevLat = _prevLat;
         var prevLon = _prevLon;
 
@@ -187,12 +194,6 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
-        // Covers both the first running second and every gate after it.
-        if (_workoutSegment != _next) {
-            setPaceTarget();
-            _workoutSegment = _next;
-        }
-
         // Guarded on loc as well as on the coordinates: without a fix this
         // second, _prevLat and _prevLon still hold the previous one, and
         // testing that point against itself is a zero-length segment.
@@ -200,7 +201,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var lon = _prevLon;
         if (loc != null && lat != null && lon != null && prevLat != null && prevLon != null) {
             if (crossedGate(_next, prevLon, prevLat, lon, lat)) {
-                advance(_distanceM);
+                advance(_distanceM, _timerMs);
                 return;
             }
         }
@@ -208,7 +209,10 @@ class PuffingBillyField extends WatchUi.DataField {
         // Deliberately outside the fix check above: the whole point of the
         // fallback is to keep the race moving when there is no fix to test.
         if (remainingM() < -OVERDISTANCE_M) {
-            advance(_segmentStartM + _lengths[_next]);
+            // Backdate the clock by however long the target pace says the
+            // overshoot should have taken, to match the backdated distance.
+            var slopMs = (OVERDISTANCE_M * _paces[_next]).toNumber();
+            advance(_segmentStartM + _lengths[_next], _timerMs - slopMs);
         }
     }
 
@@ -256,17 +260,41 @@ class PuffingBillyField extends WatchUi.DataField {
             );
             return;
         }
+        // FONT_LARGE rather than a number font: FONT_NUMBER_MILD is the
+        // smallest of those, so a notch down leaves the number fonts entirely.
         var remaining = remainingM() / 1000.0;
         drawPair(
-            dc, w / 2, h * 2 / 5, w / 40,
-            remaining.format("%.2f"), Graphics.FONT_NUMBER_MEDIUM,
+            dc, w / 2, h * 11 / 100, w / 40,
+            remaining.format("%.2f"), Graphics.FONT_LARGE,
             "km", Graphics.FONT_XTINY
         );
 
         drawPair(
-            dc, w / 2, h * 3 / 4, w / 40,
+            dc, w / 2, h * 23 / 100, w / 40,
             "to", Graphics.FONT_XTINY,
             _names[_next], Graphics.FONT_TINY
         );
+
+        // Three paces straddling the middle of the face, each label centred
+        // over its value, columns centred on the sixths.
+        //
+        // FONT_MEDIUM is the largest that clears a third of a 390px screen with
+        // room to spare: a five-character pace like 12:34 takes 113px of the
+        // 130px a column gets, where FONT_LARGE would take 130px exactly and
+        // FONT_NUMBER_MILD 168px.
+        var labels = ["target", "segment", "pace"];
+        var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
+        var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
+
+        for (var i = 0; i < 3; i += 1) {
+            var x = w * (1 + 2 * i) / 6;
+            dc.drawText(
+                x, h * 36 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
+            );
+            dc.drawText(
+                x, h * 48 / 100, Graphics.FONT_MEDIUM,
+                paceString(paces[i] as Float?), centre
+            );
+        }
     }
 }
