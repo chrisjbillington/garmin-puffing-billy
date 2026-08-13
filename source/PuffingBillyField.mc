@@ -172,7 +172,7 @@ class PuffingBillyField extends WatchUi.DataField {
         return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
     }
 
-    //! Whether the step from (lon0, lat0) to (lon1, lat1) passed through gate i.
+    //! Whether the step from (lat0, lon0) to (lat1, lon1) passed through gate i.
     //!
     //! Two segments cross exactly when each separates the other's endpoints,
     //! which is four cross products and a comparison of their signs. Working in
@@ -181,8 +181,8 @@ class PuffingBillyField extends WatchUi.DataField {
     //! constant, leaving every sign — and so the result — untouched.
     private function crossedGate(
         i as Number,
-        lon0 as Double, lat0 as Double,
-        lon1 as Double, lat1 as Double
+        lat0 as Double, lon0 as Double,
+        lat1 as Double, lon1 as Double
     ) as Boolean {
         // Four values per gate, left end then right end, each lat before lon.
         var ay = _gates[4 * i].toDouble();
@@ -210,42 +210,34 @@ class PuffingBillyField extends WatchUi.DataField {
     //! here, not in onUpdate() — onUpdate() is called on the device's own
     //! schedule, which on an AMOLED watch drops right off in low-power mode.
     function compute(info as Activity.Info) as Void {
+
+        _speedMps = info.currentSpeed;
+        _heartRate = info.currentHeartRate;
+
+        if (_next >= _lengths.size() || info.timerState == Activity.TIMER_STATE_OFF) {
+            // Race finished or not yet started
+            return;
+        }
+
         var d = info.elapsedDistance;
         _distanceM = (d == null) ? 0.0 : d;
 
         var t = info.timerTime;
         _timerMs = (t == null) ? 0 : t;
 
-        _speedMps = info.currentSpeed;
-        _heartRate = info.currentHeartRate;
-
-        var racing =
-            info.timerState == Activity.TIMER_STATE_ON &&
-            _next < _lengths.size();
-
-        // The held fix is updated whether or not we are racing, so that
-        // restarting somewhere else leaves no stale fix behind to draw a false
-        // crossing from — the line tested is always one the runner actually ran.
+        var crossed_gate = false;
         var loc = info.currentLocation;
         if (loc != null) {
             var deg = loc.toDegrees();
             var lat = deg[0] * DEG_TO_SEMI;
             var lon = deg[1] * DEG_TO_SEMI;
-            var prevLat = _lastLat;
-            var prevLon = _lastLon;
+            if (_lastLat != null && _lastLon != null) {
+                crossed_gate = crossedGate(_next, _lastLat, _lastLon, lat, lon);
+            }
             _lastLat = lat;
             _lastLon = lon;
-
-            if (racing && prevLat != null && prevLon != null &&
-                crossedGate(_next, prevLon, prevLat, lon, lat)) {
-                advance();
-                return;
-            }
         }
-
-        // Deliberately outside the fix check above: the whole point of the
-        // fallback is to keep the race moving when there is no fix to test.
-        if (racing && remainingM() < -OVERDISTANCE_M) {
+        if (crossed_gate || remainingM() < -OVERDISTANCE_M) {
             advance();
         }
     }
@@ -339,11 +331,8 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Race progression as a horizontal bar centred on y, with a marker at the
     //! runner's position.
     //!
-    //! Every segment is coloured by its *target* pace against the course
-    //! average, so the bar is a picture of the route's shape rather than of how
-    //! the run is going — green where the plan is fast, red where it is slow,
-    //! which on this course means green downhill and red up. Nothing here
-    //! reacts to the pace actually being run.
+    //! Every segment is coloured by its target pace against the course
+    //! average, green where the plan is fast, red where it is slow,
     //!
     //! Each segment is laid down dimmed and refilled at full strength over the
     //! part already covered, so the plan is legible end to end from the start
