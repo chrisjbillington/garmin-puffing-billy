@@ -5,11 +5,20 @@ import Toybox.Lang;
 import Toybox.Math;
 import Toybox.WatchUi;
 
+//! A data field for a race on a fixed course, split into segments by named
+//! waypoints. It shows how far is left to the next waypoint, how the segment is
+//! being run against its target pace, and a bar giving the shape of the whole
+//! course at a glance.
+//!
+//! The watch does not know the course: it is compiled in as a JSON resource
+//! built by segments/make_segments.py. See README.md for that pipeline.
 class PuffingBillyField extends WatchUi.DataField {
 
-    //! 2**31 semicircles to 180 degrees. Gate coordinates arrive as integer
-    //! semicircles and stay that way: it is cheaper to convert the one fix per
-    //! second than the forty gate endpoints, and Number is cheaper to hold.
+    //! 2**31 semicircles to 180 degrees. Gate coordinates are held as integer
+    //! semicircles rather than as degrees because Monkey C loads JSON reals as
+    //! 32-bit Float, whose steps span 1.3 m of longitude at this course.
+    //! Integer semicircles are exact, at about a centimetre each, so the
+    //! conversion is done on the one fix per second instead, in Double.
     private const DEG_TO_SEMI = 2147483648.0d / 180.0d;
 
     //! How far past a gate the runner may get before we give up waiting for it
@@ -18,25 +27,46 @@ class PuffingBillyField extends WatchUi.DataField {
     //! would stall every later one for the rest of the race.
     private const OVERDISTANCE_M = 200.0;
 
-    //! Pace spread at which the ring's colour saturates, as a fraction of the
+    //! Pace spread at which a segment's colour saturates, as a fraction of the
     //! course's average pace. The segment targets run from 19% faster than
     //! average to 24% slower, so 0.25 uses most of the ramp without clipping
     //! either end to a flat block of colour.
     private const PACE_SPREAD = 0.25;
 
-    //! How much the ring is knocked back for course not yet run. Integer, used
-    //! as a divisor on each colour channel.
+    //! How much a segment's colour is knocked back for course not yet run.
+    //! Integer, used as a divisor on each colour channel.
     private const DIM = 3;
 
-    //! The progress bar's thickness, and how far the content as a whole keeps
-    //! in from the edge of the screen, both as divisors of the screen width.
-    //! Given 390px that is a 10px bar inside a circle of radius 176.
+    //! Clearance kept from the edge of the screen. The watch shifts the whole
+    //! display by a few pixels every so often to spare the panel from burn-in,
+    //! and whatever it shifts towards goes under the bezel — so nothing may be
+    //! drawn hard against the edge.
     //!
-    //! The margin matters: the panel sits a couple of pixels off from the
-    //! nominal 390x390, so anything drawn hard against the edge clips on one
-    //! side and gaps on the other.
+    //! Only the bar and the rule are measured against this; the text rows are
+    //! placed by eye and are narrower than it anyway.
+    private const SAFE_INSET = 8;
+
+    //! The progress bar's thickness, as a divisor of the screen width. Given
+    //! 390px that is a 10px bar.
     private const BAR_PEN_DIV = 39;
-    private const MARGIN_DIV = 20;
+
+    //! The vertical rhythm, as percentages of the face height, and the pace
+    //! columns' offset either side of centre as a percentage of its width.
+    //! These are worth only what they are against each other: the rows are
+    //! placed by eye to sit clear of one another rather than derived from
+    //! anything, so they are gathered here to be tuned together.
+    private const Y_REMAINING = 14;
+    private const Y_NAME = 27;
+    private const Y_BAR = 35;
+    private const Y_PACE_LABEL = 44;
+    private const Y_PACE_VALUE = 57;
+    private const Y_RULE = 70;
+    private const Y_HR = 83;
+    private const X_PACE_COL = 30;
+
+    //! The finished screen, which shares nothing with the rhythm above.
+    private const Y_FINAL_KM = 40;
+    private const Y_FINISHED = 75;
 
     //! Labels and rules, in a slate blue a few stops down from the foreground:
     //! enough contrast to read when looked at, little enough that the eye goes
@@ -59,17 +89,25 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _paces as Array<Float>;
     private var _gates as Array<Number>;
 
-    //! Index of the gate being watched for, so equal to _names.size() once the
-    //! last one has been crossed. Gates are tested one at a time and in order —
-    //! this is a race on a known course, and testing only the next one is both
-    //! cheaper and immune to a doubling-back section triggering a later gate.
+    //! Total course length in metres, and the distance-weighted average of the
+    //! segment target paces in seconds per km. Both fixed for the race, so
+    //! worked out once rather than on every draw.
+    private var _courseM as Float;
+    private var _meanPaceS as Float;
+
+    //! Index of the gate being watched for, so equal to the segment count once
+    //! the last one has been crossed. Gates are tested one at a time and in
+    //! order — this is a race on a known course, and testing only the next one
+    //! is both cheaper and immune to a doubling-back section triggering a later
+    //! gate.
     private var _next as Number;
 
-    //! Previous fix, in semicircles. Held from the last compute() that had a
-    //! fix, not simply the last compute(), so that a GPS dropout leaves a longer
-    //! line to test against rather than a hole detection can fall through.
-    private var _prevLat as Double?;
-    private var _prevLon as Double?;
+    //! The most recent fix, in semicircles. Held from the last compute() that
+    //! had one, not simply the last compute(), so that a GPS dropout leaves a
+    //! longer line to test against rather than a hole detection can fall
+    //! through.
+    private var _lastLat as Double?;
+    private var _lastLon as Double?;
 
     private var _distanceM as Float;
 
@@ -93,12 +131,6 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Heart rate in bpm. Null with no strap and no wrist reading yet.
     private var _heartRate as Number?;
 
-    //! Total time the whole course takes at target pace, in seconds, and the
-    //! total course length in metres. Both fixed for the race, so summed once
-    //! rather than on every draw.
-    private var _planS as Float;
-    private var _courseM as Float;
-
     function initialize() {
         DataField.initialize();
 
@@ -111,8 +143,8 @@ class PuffingBillyField extends WatchUi.DataField {
         _gates = data["gates"] as Array<Number>;
 
         _next = 0;
-        _prevLat = null;
-        _prevLon = null;
+        _lastLat = null;
+        _lastLon = null;
         _distanceM = 0.0;
         _segmentStartM = 0.0;
         _timerMs = 0;
@@ -120,65 +152,13 @@ class PuffingBillyField extends WatchUi.DataField {
         _speedMps = null;
         _heartRate = null;
 
-        _planS = 0.0;
+        var planS = 0.0;
         _courseM = 0.0;
         for (var i = 0; i < _lengths.size(); i += 1) {
-            _planS += _lengths[i] / 1000.0 * _paces[i];
+            planS += _lengths[i] / 1000.0 * _paces[i];
             _courseM += _lengths[i];
         }
-    }
-
-    //! A pace in seconds per km as m:ss, or a placeholder when there is no
-    //! sensible pace to show — before the runner has moved, or so slow that the
-    //! number would be meaningless anyway.
-    private function paceString(paceS as Float?) as String {
-        if (paceS == null || paceS <= 0.0 || paceS > 3599.0) {
-            return "--:--";
-        }
-        var whole = (paceS + 0.5).toNumber();
-        return (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
-    }
-
-    //! Average pace over the part of the current segment run so far, in seconds
-    //! per km. Null until far enough into the segment to divide by.
-    private function segmentPaceS() as Float? {
-        var km = (_distanceM - _segmentStartM) / 1000.0;
-        if (km <= 0.0) {
-            return null;
-        }
-        return ((_timerMs - _segmentStartMs) / 1000.0) / km;
-    }
-
-    //! Instantaneous pace, in seconds per km.
-    private function currentPaceS() as Float? {
-        var speed = _speedMps;
-        if (speed == null || speed <= 0.0) {
-            return null;
-        }
-        return 1000.0 / speed;
-    }
-
-    //! Distance still to run in this segment, in metres. Goes negative once the
-    //! runner is past where the gate should have been but has not yet crossed
-    //! it — which is the normal case for a metre or two, since the odometer and
-    //! the course never agree exactly.
-    private function remainingM() as Float {
-        return _lengths[_next] - (_distanceM - _segmentStartM);
-    }
-
-    //! Move on to the next segment.
-    //!
-    //! `startM` and `startMs` are the odometer and timer readings to treat as
-    //! the boundary: the actual ones at the moment of crossing when a gate
-    //! fired, or backdated ones when we gave up on it. Backdating the distance
-    //! keeps the whole OVERDISTANCE_M of slop from being charged to the next
-    //! segment, and the clock has to move with it — otherwise that segment
-    //! starts with distance already on it but no time, and its pace reads
-    //! absurdly fast for a kilometre afterwards.
-    private function advance(startM as Float, startMs as Number) as Void {
-        _segmentStartM = startM;
-        _segmentStartMs = startMs;
-        _next += 1;
+        _meanPaceS = planS / (_courseM / 1000.0);
     }
 
     //! Twice the signed area of the triangle abc, which is positive when c lies
@@ -218,6 +198,21 @@ class PuffingBillyField extends WatchUi.DataField {
         return (d1 > 0) != (d2 > 0) && (d3 > 0) != (d4 > 0);
     }
 
+    //! Move on to the next segment.
+    //!
+    //! `startM` and `startMs` are the odometer and timer readings to treat as
+    //! the boundary: the actual ones at the moment of crossing when a gate
+    //! fired, or backdated ones when we gave up on it. Backdating the distance
+    //! keeps the whole OVERDISTANCE_M of slop from being charged to the next
+    //! segment, and the clock has to move with it — otherwise that segment
+    //! starts with distance already on it but no time, and its pace reads
+    //! absurdly fast for a kilometre afterwards.
+    private function advance(startM as Float, startMs as Number) as Void {
+        _segmentStartM = startM;
+        _segmentStartMs = startMs;
+        _next += 1;
+    }
+
     //! Called once per second with fresh activity data. Do the computation
     //! here, not in onUpdate() — onUpdate() is called on the device's own
     //! schedule, which on an AMOLED watch drops right off in low-power mode.
@@ -231,31 +226,25 @@ class PuffingBillyField extends WatchUi.DataField {
         _speedMps = info.currentSpeed;
         _heartRate = info.currentHeartRate;
 
-        var prevLat = _prevLat;
-        var prevLon = _prevLon;
+        var racing =
+            info.timerState == Activity.TIMER_STATE_ON &&
+            _next < _lengths.size();
 
+        // The held fix is updated whether or not we are racing, so that
+        // restarting somewhere else leaves no stale fix behind to draw a false
+        // crossing from — the line tested is always one the runner actually ran.
         var loc = info.currentLocation;
         if (loc != null) {
             var deg = loc.toDegrees();
-            _prevLat = deg[0] * DEG_TO_SEMI;
-            _prevLon = deg[1] * DEG_TO_SEMI;
-        }
+            var lat = deg[0] * DEG_TO_SEMI;
+            var lon = deg[1] * DEG_TO_SEMI;
+            var prevLat = _lastLat;
+            var prevLon = _lastLon;
+            _lastLat = lat;
+            _lastLon = lon;
 
-        // Follow the position whether or not the timer is running, but only
-        // count gates while it is. Tracking through a pause means restarting
-        // somewhere else leaves no stale fix behind to draw a false crossing
-        // from — the line tested is always one the runner actually ran.
-        if (info.timerState != Activity.TIMER_STATE_ON || _next >= _names.size()) {
-            return;
-        }
-
-        // Guarded on loc as well as on the coordinates: without a fix this
-        // second, _prevLat and _prevLon still hold the previous one, and
-        // testing that point against itself is a zero-length segment.
-        var lat = _prevLat;
-        var lon = _prevLon;
-        if (loc != null && lat != null && lon != null && prevLat != null && prevLon != null) {
-            if (crossedGate(_next, prevLon, prevLat, lon, lat)) {
+            if (racing && prevLat != null && prevLon != null &&
+                crossedGate(_next, prevLon, prevLat, lon, lat)) {
                 advance(_distanceM, _timerMs);
                 return;
             }
@@ -263,7 +252,7 @@ class PuffingBillyField extends WatchUi.DataField {
 
         // Deliberately outside the fix check above: the whole point of the
         // fallback is to keep the race moving when there is no fix to test.
-        if (remainingM() < -OVERDISTANCE_M) {
+        if (racing && remainingM() < -OVERDISTANCE_M) {
             // Backdate the clock by however long the target pace says the
             // overshoot should have taken, to match the backdated distance.
             var slopMs = (OVERDISTANCE_M * _paces[_next]).toNumber();
@@ -271,10 +260,62 @@ class PuffingBillyField extends WatchUi.DataField {
         }
     }
 
-    //! Green through amber to red as a segment's pace goes from PACE_SPREAD
-    //! faster than its target to the same amount slower.
-    private function paceColour(actual as Float, target as Float) as Number {
-        var t = (actual / target - 1.0) / PACE_SPREAD;
+    //! Distance still to run in this segment, in metres. Goes negative once the
+    //! runner is past where the gate should have been but has not yet crossed
+    //! it — which is the normal case for a metre or two, since the odometer and
+    //! the course never agree exactly.
+    private function remainingM() as Float {
+        return _lengths[_next] - (_distanceM - _segmentStartM);
+    }
+
+    //! Average pace over the part of the current segment run so far, in seconds
+    //! per km. Null until far enough into the segment to divide by.
+    private function segmentPaceS() as Float? {
+        var km = (_distanceM - _segmentStartM) / 1000.0;
+        if (km <= 0.0) {
+            return null;
+        }
+        return ((_timerMs - _segmentStartMs) / 1000.0) / km;
+    }
+
+    //! Instantaneous pace, in seconds per km.
+    private function currentPaceS() as Float? {
+        var speed = _speedMps;
+        if (speed == null || speed <= 0.0) {
+            return null;
+        }
+        return 1000.0 / speed;
+    }
+
+    //! A pace in seconds per km as m:ss, or a placeholder when there is no
+    //! sensible pace to show — before the runner has moved, or so slow that the
+    //! number would be meaningless anyway.
+    private function paceString(paceS as Float?) as String {
+        if (paceS == null || paceS <= 0.0 || paceS > 3599.0) {
+            return "--:--";
+        }
+        var whole = (paceS + 0.5).toNumber();
+        return (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
+    }
+
+    //! Half the width available at height y, inside the circle the face leaves
+    //! once SAFE_INSET is taken off it. Zero past that circle's top and bottom.
+    private function safeHalfWidthAt(w as Number, h as Number, y as Number) as Float {
+        var r = w / 2 - SAFE_INSET;
+        var dy = y - h / 2;
+        if (dy < 0) { dy = -dy; }
+        if (dy >= r) {
+            return 0.0;
+        }
+        // toFloat() because sqrt() is typed as Float-or-Double, and a chord on a
+        // 390px face has no need of the extra precision.
+        return Math.sqrt(r * r - dy * dy).toFloat();
+    }
+
+    //! Green through amber to red as a segment's target pace goes from
+    //! PACE_SPREAD faster than the course average to the same amount slower.
+    private function segmentColour(paceS as Float) as Number {
+        var t = (paceS / _meanPaceS - 1.0) / PACE_SPREAD;
         if (t < -1.0) { t = -1.0; }
         if (t > 1.0) { t = 1.0; }
 
@@ -296,32 +337,12 @@ class PuffingBillyField extends WatchUi.DataField {
             ((colour & 0xFF) / DIM);
     }
 
-    //! Radius of the circle the content keeps inside: the face brought in by the
-    //! standard margin.
-    private function contentR(w as Number, h as Number) as Number {
-        return (w < h ? w : h) / 2 - w / MARGIN_DIV;
-    }
-
-    //! Half the chord that circle cuts at height y, or zero past its top and
-    //! bottom. The width available to anything drawn on that line.
-    private function halfChordAt(w as Number, h as Number, y as Number) as Float {
-        var r = contentR(w, h);
-        var dy = y - h / 2;
-        if (dy < 0) { dy = -dy; }
-        if (dy >= r) {
-            return 0.0;
-        }
-        // toFloat() because sqrt() is typed as Float-or-Double, and a chord on a
-        // 390px face has no need of the extra precision.
-        return Math.sqrt(r * r - dy * dy).toFloat();
-    }
-
     //! A horizontal divider at y, spanning the middle three fifths of what is
     //! available there — so the rules draw in shorter as they approach the top
     //! and bottom of the face, which reads as dividers following the shape of
     //! the display rather than as a box drawn across it.
-    private function rule(dc as Dc, w as Number, h as Number, y as Number) as Void {
-        var half = halfChordAt(w, h, y) * 3.0 / 5.0;
+    private function drawRule(dc as Dc, w as Number, h as Number, y as Number) as Void {
+        var half = safeHalfWidthAt(w, h, y) * 3.0 / 5.0;
         dc.drawLine(w / 2 - half, y, w / 2 + half, y);
     }
 
@@ -344,26 +365,26 @@ class PuffingBillyField extends WatchUi.DataField {
         var top = y - pen / 2;
 
         // Measured at whichever of the bar's long edges is further from the
-        // middle of the face, so the whole rectangle clears the margin rather
+        // middle of the face, so the whole rectangle clears the inset rather
         // than just its centre line.
         var far = (y < h / 2) ? top : y + pen / 2;
-        var half = halfChordAt(w, h, far);
+        var half = safeHalfWidthAt(w, h, far);
         if (half <= 0.0) {
             return;
         }
 
         var x0 = w / 2 - half;
         var span = 2.0 * half;
-        var mean = _planS / (_courseM / 1000.0);
+        var barLeft = (x0 + 0.5).toNumber();
 
         // Each segment's right edge is rounded once and reused as the next
         // one's left, so the seams neither gap nor overlap however the
         // kilometres divide up.
         var done = 0.0;
-        var left = (x0 + 0.5).toNumber();
-        var here = left;
+        var left = barLeft;
+        var here = barLeft;
         for (var i = 0; i < _lengths.size(); i += 1) {
-            var colour = paceColour(_paces[i], mean);
+            var colour = segmentColour(_paces[i]);
             var len = _lengths[i].toFloat();
             var right = (x0 + span * (done + len) / _courseM + 0.5).toNumber();
 
@@ -391,6 +412,7 @@ class PuffingBillyField extends WatchUi.DataField {
             done += len;
             left = right;
         }
+        var barRight = left;
 
         // One marker at the runner's position, drawn last so it stays legible
         // over any segment colour, and standing a little proud of the bar top
@@ -400,8 +422,8 @@ class PuffingBillyField extends WatchUi.DataField {
         // exactly when the field is looked at hardest.
         var markPen = pen / 2 - 1;
         var proud = pen / 2 + markPen / 2;
-        var lo = (x0 + 0.5).toNumber() + markPen / 2;
-        var hi = left - markPen / 2;
+        var lo = barLeft + markPen / 2;
+        var hi = barRight - markPen / 2;
         if (here < lo) { here = lo; }
         if (here > hi) { here = hi; }
 
@@ -410,31 +432,28 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawLine(here, y - proud, here, y + proud);
     }
 
-    //! Draw two strings side by side in different fonts and colours, the pair
-    //! centred together on x. drawText() takes one font and the device one
-    //! colour, so mixing either on a line means measuring both halves and
-    //! placing each one by hand.
-    //!
-    //! Leaves the colour set to the right half's.
-    private function drawPair(
-        dc as Dc, x as Number, y as Number, gap as Number,
-        left as String, leftFont as FontType, leftColour as Number,
-        right as String, rightFont as FontType, rightColour as Number
+    //! Draw a value and its unit side by side, the pair centred together on the
+    //! face. drawText() takes one font and the device one colour, so mixing
+    //! either on a line means measuring both halves and placing each by hand.
+    private function drawValueUnit(
+        dc as Dc, w as Number, y as Number,
+        value as String, valueFont as FontType, valueColour as Number,
+        unit as String, unitColour as Number
     ) as Void {
-        var leftW = dc.getTextWidthInPixels(left, leftFont);
-        var rightW = dc.getTextWidthInPixels(right, rightFont);
-        var start = x - (leftW + gap + rightW) / 2;
+        var gap = w / 40;
+        var valueW = dc.getTextWidthInPixels(value, valueFont);
+        var unitW = dc.getTextWidthInPixels(unit, Graphics.FONT_XTINY);
+        var start = w / 2 - (valueW + gap + unitW) / 2;
         var justify = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
 
-        dc.setColor(leftColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(start, y, leftFont, left, justify);
-        dc.setColor(rightColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(start + leftW + gap, y, rightFont, right, justify);
+        dc.setColor(valueColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(start, y, valueFont, value, justify);
+        dc.setColor(unitColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(start + valueW + gap, y, Graphics.FONT_XTINY, unit, justify);
     }
 
-    //! Draw the field. `dc` covers only this field's slice of the screen, so
-    //! everything is sized off getWidth()/getHeight() rather than the 390x390
-    //! display — the same code has to work in a 1-, 2- or 4-field layout.
+    //! Draw the field. `dc` is the whole round face, but it is sized off
+    //! getWidth()/getHeight() rather than off a hardcoded 390x390.
     function onUpdate(dc as Dc) as Void {
         var bg = getBackgroundColor();
         var dark = (bg == Graphics.COLOR_BLACK);
@@ -447,85 +466,78 @@ class PuffingBillyField extends WatchUi.DataField {
 
         var w = dc.getWidth();
         var h = dc.getHeight();
+        var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
 
-        // No blanket setColor here: with two colours in play every draw below
-        // sets its own, and a default would only be there to be overridden.
-        if (_next >= _names.size()) {
-            drawPair(
-                dc, w / 2, h * 2 / 5, w / 40,
+        if (_next >= _lengths.size()) {
+            drawValueUnit(
+                dc, w, h * Y_FINAL_KM / 100,
                 (_distanceM / 1000.0).format("%.3f"), Graphics.FONT_NUMBER_MILD, fg,
-                "km", Graphics.FONT_XTINY, labelColour
+                "km", labelColour
             );
             dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                w / 2, h * 3 / 4, Graphics.FONT_TINY, "finished",
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+                w / 2, h * Y_FINISHED / 100, Graphics.FONT_TINY, "finished", centre
             );
             return;
         }
+
         // FONT_LARGE rather than a number font: FONT_NUMBER_MILD is the
         // smallest of those, so a notch down leaves the number fonts entirely.
-        var remaining = remainingM() / 1000.0;
-        drawPair(
-            dc, w / 2, h * 14 / 100, w / 40,
-            remaining.format("%.2f"), Graphics.FONT_LARGE, fg,
-            "km", Graphics.FONT_XTINY, labelColour
+        drawValueUnit(
+            dc, w, h * Y_REMAINING / 100,
+            (remainingM() / 1000.0).format("%.2f"), Graphics.FONT_LARGE, fg,
+            "km", labelColour
         );
 
         dc.setColor(nameColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            w / 2, h * 27 / 100, Graphics.FONT_TINY, _names[_next],
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+            w / 2, h * Y_NAME / 100, Graphics.FONT_TINY, _names[_next], centre
         );
 
         // Three paces straddling the middle of the face, each label centred over
-        // its value, the columns three tenths of the width either side of
-        // centre rather than out on the sixths — which pulls them in off the
-        // bezel without the four-character paces coming near each other.
+        // its value, the columns X_PACE_COL either side of centre rather than
+        // out on the sixths — which pulls them in off the bezel without the
+        // four-character paces coming near each other.
         //
         // Sized for a four-character pace, since this course is never run at
-        // 10:00/km or worse. On a 390px face at this height the ring encloses
-        // 340px, and 4:30 measures 100px in FONT_LARGE, 130px in the smallest
-        // number font: three of the latter want 390px, so the number fonts do
-        // not fit across at any spacing, and FONT_LARGE is as large as this row
-        // goes. The three columns leave 17px between neighbours.
+        // 10:00/km or worse. Three of those side by side will not fit across
+        // the face in any of the number fonts, so FONT_LARGE is as large as
+        // this row goes.
         var labels = ["target", "segment", "pace"];
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
-        var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
 
         for (var i = 0; i < 3; i += 1) {
-            var x = w / 2 + (i - 1) * w * 3 / 10;
+            var x = w / 2 + (i - 1) * w * X_PACE_COL / 100;
             dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                x, h * 44 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
+                x, h * Y_PACE_LABEL / 100, Graphics.FONT_XTINY,
+                labels[i] as String, centre
             );
             dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                x, h * 57 / 100, Graphics.FONT_LARGE,
+                x, h * Y_PACE_VALUE / 100, Graphics.FONT_LARGE,
                 paceString(paces[i] as Float?), centre
             );
         }
 
         // A number font for the rate itself: it is the one value here read at a
         // glance mid-effort rather than studied, and the bottom of the face has
-        // the room for it now.
+        // the room for it.
         var hr = _heartRate;
-        drawPair(
-            dc, w / 2, h * 83 / 100, w / 40,
+        drawValueUnit(
+            dc, w, h * Y_HR / 100,
             (hr == null ? "---" : hr.format("%d")), Graphics.FONT_NUMBER_MILD, fg,
-            "BPM", Graphics.FONT_XTINY, labelColour
+            "BPM", labelColour
         );
 
-        // One rule, under the pace row. The heading used to have one too, but
-        // the bar now divides the face there and a hairline a few pixels off it
-        // would only be clutter. The offset clears the row's baseline rather
-        // than its line box: fonts here carry several pixels of descent that
-        // none of these strings actually use.
+        // The offset clears the pace row's baseline rather than its line box:
+        // fonts here carry several pixels of descent that none of these strings
+        // actually use.
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(1);
-        rule(dc, w, h, h * 70 / 100);
+        drawRule(dc, w, h, h * Y_RULE / 100);
 
         // Last, because it leaves the pen width and colour where it likes.
-        drawBar(dc, w, h, h * 35 / 100, fg);
+        drawBar(dc, w, h, h * Y_BAR / 100, fg);
     }
 }
