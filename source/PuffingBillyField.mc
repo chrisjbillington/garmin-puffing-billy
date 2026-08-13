@@ -53,6 +53,13 @@ class PuffingBillyField extends WatchUi.DataField {
     //! when the watch has nothing to report yet.
     private var _speedMps as Float?;
 
+    //! Heart rate in bpm. Null with no strap and no wrist reading yet.
+    private var _heartRate as Number?;
+
+    //! Total time the whole course takes at target pace, in seconds. Fixed for
+    //! the race, so summed once rather than on every draw.
+    private var _planS as Float;
+
     function initialize() {
         DataField.initialize();
 
@@ -72,6 +79,36 @@ class PuffingBillyField extends WatchUi.DataField {
         _timerMs = 0;
         _segmentStartMs = 0;
         _speedMps = null;
+        _heartRate = null;
+
+        _planS = 0.0;
+        for (var i = 0; i < _lengths.size(); i += 1) {
+            _planS += _lengths[i] / 1000.0 * _paces[i];
+        }
+    }
+
+    //! A duration in seconds as h:mm:ss, dropping the hours when there are none.
+    private function timeString(t as Float) as String {
+        var whole = (t + 0.5).toNumber();
+        var mm = (whole / 60) % 60;
+        var ss = whole % 60;
+        if (whole >= 3600) {
+            return (whole / 3600).format("%d") + ":" + mm.format("%02d") +
+                ":" + ss.format("%02d");
+        }
+        return mm.format("%d") + ":" + ss.format("%02d");
+    }
+
+    //! Projected finish time in seconds: what is on the clock now, plus the
+    //! whole rest of the course run exactly to target pace. The current
+    //! segment's remainder can be negative — past the gate but not yet through
+    //! it — which is correct, since that distance no longer has to be run.
+    private function projectedS() as Float {
+        var left = remainingM() / 1000.0 * _paces[_next];
+        for (var i = _next + 1; i < _lengths.size(); i += 1) {
+            left += _lengths[i] / 1000.0 * _paces[i];
+        }
+        return _timerMs / 1000.0 + left;
     }
 
     //! A pace in seconds per km as m:ss, or a placeholder when there is no
@@ -102,6 +139,17 @@ class PuffingBillyField extends WatchUi.DataField {
             return null;
         }
         return 1000.0 / speed;
+    }
+
+    //! A one-line preview of the segment after this one, so its length and pace
+    //! arrive before the gate does rather than at it.
+    private function nextLine() as String {
+        var i = _next + 1;
+        if (i >= _names.size()) {
+            return "next: finish";
+        }
+        return "next: " + (_lengths[i] / 1000.0).format("%.2f") +
+            " km @ " + paceString(_paces[i]);
     }
 
     //! Distance still to run in this segment, in metres. Goes negative once the
@@ -175,6 +223,7 @@ class PuffingBillyField extends WatchUi.DataField {
         _timerMs = (t == null) ? 0 : t;
 
         _speedMps = info.currentSpeed;
+        _heartRate = info.currentHeartRate;
 
         var prevLat = _prevLat;
         var prevLon = _prevLon;
@@ -286,15 +335,54 @@ class PuffingBillyField extends WatchUi.DataField {
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
 
+        dc.drawText(w / 2, h * 33 / 100, Graphics.FONT_XTINY, nextLine(), centre);
+
         for (var i = 0; i < 3; i += 1) {
             var x = w * (1 + 2 * i) / 6;
             dc.drawText(
-                x, h * 36 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
+                x, h * 43 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
             );
             dc.drawText(
-                x, h * 48 / 100, Graphics.FONT_MEDIUM,
+                x, h * 55 / 100, Graphics.FONT_MEDIUM,
                 paceString(paces[i] as Float?), centre
             );
         }
+
+        // Rules under the heading, the preview and the pace row. Full width, so
+        // a round screen clips the ends — which is what makes them read as
+        // dividers rather than as boxes. The offsets clear each row's baseline
+        // rather than its line box: fonts here carry several pixels of descent
+        // that none of these strings actually use.
+        var projected = projectedS();
+        dc.drawText(
+            w / 2, h * 67 / 100, Graphics.FONT_XTINY,
+            "projected: " + timeString(projected), centre
+        );
+
+        // Positive means the projection lands inside the plan.
+        var delta = _planS - projected;
+        dc.drawText(
+            w / 2, h * 75 / 100, Graphics.FONT_XTINY,
+            timeString(delta < 0 ? -delta : delta) +
+                (delta < 0 ? " behind" : " ahead"),
+            centre
+        );
+
+        var hr = _heartRate;
+        dc.drawText(
+            w / 2, h * 88 / 100, Graphics.FONT_TINY,
+            (hr == null ? "---" : hr.format("%d")) + " BPM", centre
+        );
+
+        // Rules under the heading, the preview, the pace row and the pacing
+        // block. Full width, so a round screen clips the ends — which is what
+        // makes them read as dividers rather than as boxes. The offsets clear
+        // each row's baseline rather than its line box: fonts here carry
+        // several pixels of descent that none of these strings actually use.
+        dc.setPenWidth(1);
+        dc.drawLine(0, h * 28 / 100, w, h * 28 / 100);
+        dc.drawLine(0, h * 38 / 100, w, h * 38 / 100);
+        dc.drawLine(0, h * 62 / 100, w, h * 62 / 100);
+        dc.drawLine(0, h * 80 / 100, w, h * 80 / 100);
     }
 }
