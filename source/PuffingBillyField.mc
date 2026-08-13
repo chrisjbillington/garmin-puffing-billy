@@ -40,6 +40,22 @@ class PuffingBillyField extends WatchUi.DataField {
     private const RING_PEN_DIV = 39;
     private const RING_INNER_DIV = 20;
 
+    //! Labels and rules, in a slate blue a few stops down from the foreground:
+    //! enough contrast to read when looked at, little enough that the eye goes
+    //! to the numbers rather than to what they are called. The upcoming
+    //! waypoint is a value rather than a label, so it takes a blue of the same
+    //! weight but with the grey taken out of it — told apart by its hue rather
+    //! than by being brighter.
+    //!
+    //! One pair per background, because a single colour cannot sit the same
+    //! distance from both black and white. Each is picked to land near 9:1
+    //! against its own background, against the 21:1 the white-on-black numbers
+    //! get, so the hierarchy holds whichever way round the field is drawn.
+    private const LABEL_ON_DARK = 0x96AFC8;    // 9.3:1 on black
+    private const LABEL_ON_LIGHT = 0x334C66;   // 8.9:1 on white
+    private const NAME_ON_DARK = 0x74BEF5;     // 10.4:1 on black
+    private const NAME_ON_LIGHT = 0x14508A;    // 8.3:1 on white
+
     private var _names as Array<String>;
     private var _lengths as Array<Number>;
     private var _paces as Array<Float>;
@@ -334,7 +350,7 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawLine(w / 2 - half, y, w / 2 + half, y);
     }
 
-    //! Progress ring around the rim, with a tick at every gate.
+    //! Progress ring around the rim, with a marker at the runner's position.
     //!
     //! Every segment is coloured by its *target* pace against the course
     //! average, so the ring is a picture of the route's shape rather than of
@@ -355,6 +371,7 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.setPenWidth(pen);
 
         var done = 0.0;
+        var here = 0.0;
         for (var i = 0; i < _lengths.size(); i += 1) {
             var colour = paceColour(_paces[i], mean);
             var span = _lengths[i].toFloat();
@@ -371,6 +388,7 @@ class PuffingBillyField extends WatchUi.DataField {
                 run = _distanceM - _segmentStartM;
                 if (run > span) { run = span; }
                 if (run < 0.0) { run = 0.0; }
+                here = done + run;
             }
 
             if (run > 0.0) {
@@ -380,38 +398,47 @@ class PuffingBillyField extends WatchUi.DataField {
             done += span;
         }
 
-        // Gate ticks, drawn last so they stay legible over any arc colour.
-        dc.setPenWidth(2);
+        // One marker at the runner's position, drawn last so it stays legible
+        // over any arc colour. There used to be a tick at every gate; the
+        // segments are already delimited by the colours changing, and one mark
+        // is found at a glance where one of ten has to be picked out.
+        //
+        // Wider than those ticks were and standing a little proud of the band on
+        // both sides, since it is now the only thing on the ring that moves.
+        var markPen = pen / 2 - 1;
+        var inner = r - pen / 2 - markPen / 2;
+        var outer = r + pen / 2 + markPen / 2;
+        var rad = Math.toRadians(angleAt(here));
+        var dx = Math.cos(rad);
+        var dy = Math.sin(rad);
+
+        dc.setPenWidth(markPen);
         dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
-        var inner = r - pen / 2 - 1;
-        var outer = r + pen / 2 + 1;
-        var at = 0.0;
-        for (var i = 0; i < _lengths.size(); i += 1) {
-            var rad = Math.toRadians(angleAt(at));
-            var dx = Math.cos(rad);
-            var dy = Math.sin(rad);
-            dc.drawLine(
-                cx + inner * dx, cy - inner * dy,
-                cx + outer * dx, cy - outer * dy
-            );
-            at += _lengths[i];
-        }
+        dc.drawLine(
+            cx + inner * dx, cy - inner * dy,
+            cx + outer * dx, cy - outer * dy
+        );
     }
 
-    //! Draw two strings side by side in different fonts, the pair centred
-    //! together on x. drawText() takes a single font, so mixing sizes on one
-    //! line means measuring both halves and placing each one by hand.
+    //! Draw two strings side by side in different fonts and colours, the pair
+    //! centred together on x. drawText() takes one font and the device one
+    //! colour, so mixing either on a line means measuring both halves and
+    //! placing each one by hand.
+    //!
+    //! Leaves the colour set to the right half's.
     private function drawPair(
         dc as Dc, x as Number, y as Number, gap as Number,
-        left as String, leftFont as FontType,
-        right as String, rightFont as FontType
+        left as String, leftFont as FontType, leftColour as Number,
+        right as String, rightFont as FontType, rightColour as Number
     ) as Void {
         var leftW = dc.getTextWidthInPixels(left, leftFont);
         var rightW = dc.getTextWidthInPixels(right, rightFont);
         var start = x - (leftW + gap + rightW) / 2;
         var justify = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
 
+        dc.setColor(leftColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(start, y, leftFont, left, justify);
+        dc.setColor(rightColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(start + leftW + gap, y, rightFont, right, justify);
     }
 
@@ -420,7 +447,10 @@ class PuffingBillyField extends WatchUi.DataField {
     //! display — the same code has to work in a 1-, 2- or 4-field layout.
     function onUpdate(dc as Dc) as Void {
         var bg = getBackgroundColor();
-        var fg = (bg == Graphics.COLOR_BLACK) ? Graphics.COLOR_WHITE : Graphics.COLOR_BLACK;
+        var dark = (bg == Graphics.COLOR_BLACK);
+        var fg = dark ? Graphics.COLOR_WHITE : Graphics.COLOR_BLACK;
+        var labelColour = dark ? LABEL_ON_DARK : LABEL_ON_LIGHT;
+        var nameColour = dark ? NAME_ON_DARK : NAME_ON_LIGHT;
 
         dc.setColor(bg, bg);
         dc.clear();
@@ -428,14 +458,15 @@ class PuffingBillyField extends WatchUi.DataField {
         var w = dc.getWidth();
         var h = dc.getHeight();
 
-        dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
-
+        // No blanket setColor here: with two colours in play every draw below
+        // sets its own, and a default would only be there to be overridden.
         if (_next >= _names.size()) {
             drawPair(
                 dc, w / 2, h * 2 / 5, w / 40,
-                (_distanceM / 1000.0).format("%.3f"), Graphics.FONT_NUMBER_MILD,
-                "km", Graphics.FONT_XTINY
+                (_distanceM / 1000.0).format("%.3f"), Graphics.FONT_NUMBER_MILD, fg,
+                "km", Graphics.FONT_XTINY, labelColour
             );
+            dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
                 w / 2, h * 3 / 4, Graphics.FONT_TINY, "finished",
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
@@ -447,34 +478,38 @@ class PuffingBillyField extends WatchUi.DataField {
         var remaining = remainingM() / 1000.0;
         drawPair(
             dc, w / 2, h * 14 / 100, w / 40,
-            remaining.format("%.2f"), Graphics.FONT_LARGE,
-            "km", Graphics.FONT_XTINY
+            remaining.format("%.2f"), Graphics.FONT_LARGE, fg,
+            "km", Graphics.FONT_XTINY, labelColour
         );
 
-        drawPair(
-            dc, w / 2, h * 27 / 100, w / 40,
-            "to", Graphics.FONT_XTINY,
-            _names[_next], Graphics.FONT_TINY
+        dc.setColor(nameColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            w / 2, h * 27 / 100, Graphics.FONT_TINY, _names[_next],
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
         );
 
-        // Three paces straddling the middle of the face, each label centred
-        // over its value, columns centred on the sixths.
+        // Three paces straddling the middle of the face, each label centred over
+        // its value, the columns three tenths of the width either side of
+        // centre rather than out on the sixths — which pulls them in off the
+        // bezel without the four-character paces coming near each other.
         //
-        // FONT_LARGE fills the third of a 390px screen a column gets: a
-        // five-character pace like 12:34 takes 130px of the 130px available, so
-        // adjacent columns touch in the worst case. Real paces on this course
-        // are four characters and leave a comfortable gap; the five-character
-        // ones are the "--:--" placeholder and a pace slow enough that the
-        // columns running together is the least of it.
+        // Sized for a four-character pace, since this course is never run at
+        // 10:00/km or worse. On a 390px face at this height the ring encloses
+        // 340px, and 4:30 measures 100px in FONT_LARGE, 130px in the smallest
+        // number font: three of the latter want 390px, so the number fonts do
+        // not fit across at any spacing, and FONT_LARGE is as large as this row
+        // goes. The three columns leave 17px between neighbours.
         var labels = ["target", "segment", "pace"];
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
 
         for (var i = 0; i < 3; i += 1) {
-            var x = w * (1 + 2 * i) / 6;
+            var x = w / 2 + (i - 1) * w * 3 / 10;
+            dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
                 x, h * 44 / 100, Graphics.FONT_XTINY, labels[i] as String, centre
             );
+            dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
                 x, h * 57 / 100, Graphics.FONT_LARGE,
                 paceString(paces[i] as Float?), centre
@@ -487,13 +522,14 @@ class PuffingBillyField extends WatchUi.DataField {
         var hr = _heartRate;
         drawPair(
             dc, w / 2, h * 83 / 100, w / 40,
-            (hr == null ? "---" : hr.format("%d")), Graphics.FONT_NUMBER_MILD,
-            "BPM", Graphics.FONT_XTINY
+            (hr == null ? "---" : hr.format("%d")), Graphics.FONT_NUMBER_MILD, fg,
+            "BPM", Graphics.FONT_XTINY, labelColour
         );
 
         // Rules under the heading and under the pace row. The offsets clear each
         // row's baseline rather than its line box: fonts here carry several
         // pixels of descent that none of these strings actually use.
+        dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(1);
         rule(dc, w, h, h * 35 / 100);
         rule(dc, w, h, h * 70 / 100);
