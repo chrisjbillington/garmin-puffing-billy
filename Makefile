@@ -22,7 +22,7 @@ SOURCES := manifest.xml monkey.jungle \
 
 MONKEYC := $(BIN)/monkeyc -f monkey.jungle -y $(KEY) -w -l $(TYPECHECK)
 
-.PHONY: all build run sim deploy package clean check
+.PHONY: all build run sim deploy package clean check segments
 
 all: build
 
@@ -31,7 +31,10 @@ check:
 	@test -x "$(BIN)/monkeyc" || { echo "No monkeyc in $(BIN)"; exit 1; }
 	@test -f "$(KEY)"   || { echo "No developer key at $(KEY) (override with KEY=)"; exit 1; }
 
-build: check $(PRG)
+segments:
+	python segments/make_segments.py
+
+build: check segments $(PRG)
 
 $(PRG): $(SOURCES) | $(OUT)
 	$(MONKEYC) -d $(DEVICE) -o $@

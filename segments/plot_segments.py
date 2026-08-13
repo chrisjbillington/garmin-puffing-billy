@@ -16,8 +16,9 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
-from process_waypoints import (
-    PROCESSED_WAYPOINTS_FILE,
+from make_segments import (
+    OUT_DIR,
+    SEGMENTS_FILE,
     GATE_LENGTH,
     GPX_FILE,
     cumulative_distances,
@@ -30,8 +31,8 @@ percent = 0.01
 
 THIS_DIR = Path(__file__).absolute().parent
 
-COURSE_PLOT_FILE = THIS_DIR / "course_gates.png"
-ELEVATION_PLOT_FILE = THIS_DIR / "course_elevation.png"
+COURSE_PLOT_FILE = OUT_DIR / "course_gates.png"
+ELEVATION_PLOT_FILE = OUT_DIR / "course_elevation.png"
 
 FIGSIZE = (11, 4.75)
 
@@ -58,7 +59,7 @@ LABEL_ARROW = {
 
 def plot_course():
     points = read_track(GPX_FILE)
-    waypoints = json.loads(PROCESSED_WAYPOINTS_FILE.read_text('utf8'))
+    segments = json.loads(SEGMENTS_FILE.read_text('utf8'))
 
     # Everything in km relative to the start of the course:
     lat0, lon0, _ = points[0]
@@ -75,7 +76,7 @@ def plot_course():
         *track[0], marker="o", color="darkgreen", markersize=7, zorder=4, label="Start"
     )
 
-    for i, (name, waypoint) in enumerate(waypoints.items()):
+    for i, (name, waypoint) in enumerate(segments.items()):
         east, north = km_offset(waypoint["lat"], waypoint["lon"])
         left = km_offset(waypoint["gate_left_lat"], waypoint["gate_left_lon"])
         right = km_offset(waypoint["gate_right_lat"], waypoint["gate_right_lon"])
@@ -84,7 +85,7 @@ def plot_course():
         ax.plot(east, north, marker="o", color="crimson", markersize=4, zorder=4)
         # Alternate the labels above and below the course so they don't collide. Last
         # point hard-coded to be above regardless
-        above = i % 2 == 0 or i == len(waypoints) - 1
+        above = i % 2 == 0 or i == len(segments) - 1
         ax.annotate(
             f"{name}\n{waypoint['distance'] / km} km",
             (east, north),
@@ -117,16 +118,16 @@ def plot_course():
 
 def plot_elevation():
     points = read_track(GPX_FILE)
-    waypoints = json.loads(PROCESSED_WAYPOINTS_FILE.read_text('utf8'))
+    segments = json.loads(SEGMENTS_FILE.read_text('utf8'))
 
     distance = np.array(cumulative_distances(points))
     elevation = np.array([ele for _, _, ele in points])
 
     # The straight lines run from waypoint to waypoint, starting at the start of
     # the course. Their slope is the average grade of the segment they span:
-    segment_distance = np.array([0.0] + [w["distance"] for w in waypoints.values()])
-    segment_ele = np.array([elevation[0]] + [w["elevation"] for w in waypoints.values()])
-    segment_grade = np.array([w["grade"] for w in waypoints.values()])
+    segment_distance = np.array([0.0] + [w["distance"] for w in segments.values()])
+    segment_ele = np.array([elevation[0]] + [w["elevation"] for w in segments.values()])
+    segment_grade = np.array([w["grade"] for w in segments.values()])
 
     fig, ax = plt.subplots(figsize=FIGSIZE)
     ax.plot(
@@ -168,7 +169,7 @@ def plot_elevation():
 
     low, high = elevation.min(), elevation.max()
 
-    for name, d, ele in zip(waypoints, segment_distance[1:], segment_ele[1:]):
+    for name, d, ele in zip(segments, segment_distance[1:], segment_ele[1:]):
         # The names are written vertically so that they fit above the shorter
         # segments. They go below the course where it is high and above it where it
         # is low, so that each sits in the empty space beside the trace rather than
@@ -244,4 +245,5 @@ def plot():
 
 
 if __name__ == "__main__":
+    OUT_DIR.mkdir(exist_ok=True)
     plot()

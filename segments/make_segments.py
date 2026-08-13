@@ -1,18 +1,22 @@
-"""Locate the race-split waypoints on the course.
+"""Process user config config.json to locate the race-split waypoints on the course, and
+calculate per-segment pacing.
 
-Reads the segment endpoint, defined by their distance into the course, from
-waypoints.json, and the course track from the .gpx file, and works out where along the
-track each segment boundary falls. Writes processed-waypoints.json with each waypoint's
-name, distance into the course, coordinates, the heading of the course at that point,
-and the two ends of the gate there: a line GATE_LENGTH metres long, centred on the
-course and normal to the heading, which the runner passes through on entering the next
-segment. The ends are given left first, then right, as seen by a runner running the
-course.
+Reads the segment endpoint, defined by their distance into the course, from config.json,
+and the course track from the .gpx file, and works out where along the track each
+segment boundary falls. Writes out/segments.json with each waypoint's name, distance
+into the course, coordinates, the heading of the course at that point, and the two ends
+of the gate there: a line GATE_LENGTH metres long, centred on the course and normal to
+the heading, which the runner passes through on entering the next segment. The ends are
+given left first, then right, as seen by a runner running the course.
 
 The heading is the tangent of a quadratic fit to the track within HEADING_WINDOW
 metres of the waypoint. Fitting a curve over a window rather than taking the
 bearing between the two adjacent track points keeps the heading from swinging
 wildly where the course has a sharp kink in it.
+
+Target pacing is calculated based on a flat pace and uphill/downhill pace penalty/bonus
+factor read from config.json and saved in segments.json
+
 """
 from pathlib import Path
 import json
@@ -24,11 +28,13 @@ import numpy as np
 
 
 km = 1000
+percent = 0.01
 
 THIS_DIR = Path(__file__).absolute().parent
-WAYPOINTS_FILE = THIS_DIR / "waypoints.json"
+OUT_DIR = THIS_DIR / 'out'
+CONFIG_FILE = THIS_DIR / "config.json"
 GPX_FILE = THIS_DIR / "official-course-2026.gpx"
-PROCESSED_WAYPOINTS_FILE = THIS_DIR / "processed-waypoints.json"
+SEGMENTS_FILE = OUT_DIR / "segments.json"
 
 R_EARTH = 6371008.8  # mean Earth radius, metres
 
@@ -39,6 +45,28 @@ HEADING_WINDOW = 50.0  # metres
 
 # Spacing the track is re-interpolated to before fitting:
 RESAMPLE_SPACING = 5.0  # metres
+
+
+def ms2s(pace_string):
+    # convert a string duration in minutes and seconds like "4:43" to seconds
+    m, s = [float(x) for x in pace_string.split(':')]
+    return 60 * m + s
+
+
+def s2ms(pace):
+    # Format a duration in seconds in minutes and seconds as a string like "4:43"
+    m, s = divmod(pace, 60)
+    return f"{m:.0f}:{s:02.0f}"
+
+
+def grade2pace(grade, flat_pace, uphill_penalty, downhill_bonus):
+    # Given flat pace in seconds per km and a fractional uphill/downhill penalty/bonus
+    # (percent slowdown/speedup per percent grade), return grade-adjusted pace
+    if grade > 0:
+        k = uphill_penalty
+    else:
+        k = downhill_bonus
+    return flat_pace * (1 + k * grade)
 
 
 def read_track(gpx_file):
@@ -158,22 +186,27 @@ def heading_at(s, lats, lons, target):
     return 180 / np.pi * math.atan2(d_east, d_north)
 
 
-def make_waypoints():
-    segments = json.loads(WAYPOINTS_FILE.read_text('utf8'))
+def make_segments():
+    config = json.loads(CONFIG_FILE.read_text('utf8'))
+    waypoints = config['waypoints']
+    flat_pace = ms2s(config["pacing"]["flat_pace"])
+    uphill_penalty = config["pacing"]["uphill_penalty"]
+    downhill_bonus = config["pacing"]["downhill_bonus"]
+
     points = read_track(GPX_FILE)
     distances = cumulative_distances(points)
     track_length = distances[-1]
     s, lats, lons = resample(points, distances)
 
-    print(f"Track: {len(points)} points, {track_length / 1000:.3f} km")
-    print(f"Gates: {GATE_LENGTH:.0f} m long, heading fitted over +/-{HEADING_WINDOW:.0f} m")
-    print(f"Splits: {len(segments)} segments, {list(segments.values())[-1]:.3f} km")
+    print(f"Track: {len(points)} points, {track_length / km:.3f} km")
+    # print(f"Gates: {GATE_LENGTH:.0f} m long, heading fitted over +/-{HEADING_WINDOW:.0f} m")
+    print(f"Splits: {len(waypoints)} segments, {list(waypoints.values())[-1]:.3f} km")
     print()
 
-    out = {}
+    segments = {}
     distance_prev = 0
     _, _, ele_prev = position_at(points, distances, 0)
-    for name, distance_km in segments.items():
+    for name, distance_km in waypoints.items():
         distance = distance_km * km
         length = distance - distance_prev
         distance_prev = distance
@@ -189,10 +222,12 @@ def make_waypoints():
         (left_lat, left_lon), (right_lat, right_lon) = gate_ends(lat, lon, heading)
         grade = (ele - ele_prev) / length
         ele_prev = ele
-        out[name] = {
+        pace = grade2pace(grade, flat_pace, uphill_penalty, downhill_bonus)
+        segments[name] = {
             "distance": distance,
             "length": length,
             "grade": grade,
+            "pace": pace,
             "lat": lat,
             "lon": lon,
             "elevation": ele,
@@ -203,17 +238,30 @@ def make_waypoints():
             "gate_right_lon": right_lon,
         }
 
-    PROCESSED_WAYPOINTS_FILE.write_text(json.dumps(out, indent=4), 'utf8')
-    print(f"{'waypoint':>20}  {'km':>6}  {'lat':>10}  {'lon':>10}  {'heading':>8}")
-    print("-" * 62)
-    for name, row in out.items():
+    
+    print(
+        f"{'segment endpoint':>20}  {'dist':>6}  {'len':>6}  {'grade'}  {'pace'}"
+    )
+    print("-" * 49)
+    for name, row in segments.items():
         print(
-            f"{name:>20}  {row['distance'] / km:>6.3f}  {row['lat']:+10.5f}  "
-            f"{row['lon']:+10.5f}  {row['heading']:+8.3f}°"
+            f"{name:>20}  {row['distance'] / km:>6.3f}  {row['length'] / km:>6.3f}  "
+            f"{row['grade'] / percent:+.1f}%  {s2ms(row['pace'])}"
         )
+
     print()
-    print(f"Wrote {PROCESSED_WAYPOINTS_FILE}")
+    total_time = sum(seg['pace'] * (seg['length'] / km) for seg in segments.values())
+    avg_pace = total_time / (track_length / km)
+
+    print(f"       Total time: {s2ms(total_time)}")
+    print(f"     Average pace: {s2ms(avg_pace)}/km")
+    print(f"Difficulty factor: {avg_pace/flat_pace:.3f}")
+
+    print()
+    SEGMENTS_FILE.write_text(json.dumps(segments, indent=4), 'utf8')
+    print(f"Wrote {SEGMENTS_FILE}")
 
 
 if __name__ == "__main__":
-    make_waypoints()
+    OUT_DIR.mkdir(exist_ok=True)
+    make_segments()
