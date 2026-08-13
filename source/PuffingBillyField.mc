@@ -2,7 +2,6 @@ import Toybox.Activity;
 import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
-import Toybox.System;
 import Toybox.WatchUi;
 
 class PuffingBillyField extends WatchUi.DataField {
@@ -17,6 +16,16 @@ class PuffingBillyField extends WatchUi.DataField {
     //! missed gate — a long GPS dropout, a wide detour around the course —
     //! would stall every later one for the rest of the race.
     private const OVERDISTANCE_M = 200.0;
+
+    //! Distance given to the workout step, in metres. setWorkout() takes only a
+    //! time or a distance duration — there is no "until the lap button" — so
+    //! the step is simply made far longer than any race, and never completes.
+    //! That is the run-indefinitely-at-this-pace behaviour we're after.
+    private const WORKOUT_DISTANCE_M = 100000;
+
+    //! Half-width of the pace target band, in seconds per km. The watch's own
+    //! out-of-range alerts fire outside it.
+    private const PACE_BAND_S = 5.0;
 
     private var _names as Array<String>;
     private var _lengths as Array<Number>;
@@ -44,6 +53,11 @@ class PuffingBillyField extends WatchUi.DataField {
     //! segment fresh keeps that drift from compounding over thirteen km.
     private var _segmentStartM as Float;
 
+    //! Segment whose pace is currently loaded into the watch's workout target,
+    //! or -1 for none. Compared against _next so the target is pushed once per
+    //! segment rather than once per second.
+    private var _workoutSegment as Number;
+
     function initialize() {
         DataField.initialize();
 
@@ -60,6 +74,36 @@ class PuffingBillyField extends WatchUi.DataField {
         _prevLon = null;
         _distanceM = 0.0;
         _segmentStartM = 0.0;
+        _workoutSegment = -1;
+    }
+
+    //! Point the watch's own workout target at the current segment's pace, so
+    //! that its native out-of-range alerts do the nagging for us.
+    //!
+    //! Pace targets are speed targets, so the band inverts: the *slow* end of
+    //! the pace band is the *low* speed. FIT carries speed in millimetres per
+    //! second, which is what these Number fields want — 1000 m / P seconds is
+    //! 1e6/P mm/s.
+    private function setPaceTarget() as Void {
+        var pace = _paces[_next];
+
+        var step = new Activity.WorkoutStep();
+        step.durationType = Activity.WORKOUT_STEP_DURATION_DISTANCE;
+        step.durationValue = WORKOUT_DISTANCE_M;
+        step.targetType = Activity.WORKOUT_STEP_TARGET_SPEED;
+        step.targetValueLow = (1000000.0 / (pace + PACE_BAND_S)).toNumber();
+        step.targetValueHigh = (1000000.0 / (pace - PACE_BAND_S)).toNumber();
+
+        var info = new Activity.WorkoutStepInfo();
+        info.step = step;
+        info.name = _names[_next];
+        info.intensity = Activity.WORKOUT_INTENSITY_ACTIVE;
+
+        // The return value is documented as "true if the workout was set", but
+        // the simulator returns false even when it has written the workout
+        // correctly to GARMIN/Workouts/*.fit — verified by reading that file
+        // back. Ignored rather than logged, so it can't cry wolf again.
+        setWorkout([info], {:name => "Puffing Billy"});
     }
 
     //! Distance still to run in this segment, in metres. Goes negative once the
@@ -76,13 +120,7 @@ class PuffingBillyField extends WatchUi.DataField {
     //! at the moment of crossing when a gate actually fired, or the nominal one
     //! when we gave up on it. Using the nominal in that case keeps the whole
     //! OVERDISTANCE_M of slop from being charged to the following segment.
-    private function advance(startM as Float, reason as String) as Void {
-        System.println(
-            "gate " + _next + " " + _names[_next] + " " + reason +
-            " at " + (_distanceM / 1000.0).format("%.3f") + " km" +
-            " (" + (_distanceM - _segmentStartM - _lengths[_next]).format("%+.0f") +
-            " m against segment)"
-        );
+    private function advance(startM as Float) as Void {
         _segmentStartM = startM;
         _next += 1;
     }
@@ -149,6 +187,12 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
+        // Covers both the first running second and every gate after it.
+        if (_workoutSegment != _next) {
+            setPaceTarget();
+            _workoutSegment = _next;
+        }
+
         // Guarded on loc as well as on the coordinates: without a fix this
         // second, _prevLat and _prevLon still hold the previous one, and
         // testing that point against itself is a zero-length segment.
@@ -156,7 +200,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var lon = _prevLon;
         if (loc != null && lat != null && lon != null && prevLat != null && prevLon != null) {
             if (crossedGate(_next, prevLon, prevLat, lon, lat)) {
-                advance(_distanceM, "crossed");
+                advance(_distanceM);
                 return;
             }
         }
@@ -164,7 +208,7 @@ class PuffingBillyField extends WatchUi.DataField {
         // Deliberately outside the fix check above: the whole point of the
         // fallback is to keep the race moving when there is no fix to test.
         if (remainingM() < -OVERDISTANCE_M) {
-            advance(_segmentStartM + _lengths[_next], "timed out");
+            advance(_segmentStartM + _lengths[_next]);
         }
     }
 

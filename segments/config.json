@@ -15,5 +15,7 @@
         "flat_pace": "4:45",
         "uphill_penalty": 5,
         "downhill_bonus": 1.75
-    }
+    },
+    "overdistance": 200,
+    "allowed_pace_error": 15
 }
