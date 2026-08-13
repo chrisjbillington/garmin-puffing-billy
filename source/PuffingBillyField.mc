@@ -2,6 +2,7 @@ import Toybox.Activity;
 import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Math;
 import Toybox.WatchUi;
 
 class PuffingBillyField extends WatchUi.DataField {
@@ -16,6 +17,16 @@ class PuffingBillyField extends WatchUi.DataField {
     //! missed gate — a long GPS dropout, a wide detour around the course —
     //! would stall every later one for the rest of the race.
     private const OVERDISTANCE_M = 200.0;
+
+    //! Pace spread at which the ring's colour saturates, as a fraction of the
+    //! course's average pace. The segment targets run from 19% faster than
+    //! average to 24% slower, so 0.25 uses most of the ramp without clipping
+    //! either end to a flat block of colour.
+    private const PACE_SPREAD = 0.25;
+
+    //! How much the ring is knocked back for course not yet run. Integer, used
+    //! as a divisor on each colour channel.
+    private const DIM = 3;
 
     private var _names as Array<String>;
     private var _lengths as Array<Number>;
@@ -56,9 +67,11 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Heart rate in bpm. Null with no strap and no wrist reading yet.
     private var _heartRate as Number?;
 
-    //! Total time the whole course takes at target pace, in seconds. Fixed for
-    //! the race, so summed once rather than on every draw.
+    //! Total time the whole course takes at target pace, in seconds, and the
+    //! total course length in metres. Both fixed for the race, so summed once
+    //! rather than on every draw.
     private var _planS as Float;
+    private var _courseM as Float;
 
     function initialize() {
         DataField.initialize();
@@ -82,8 +95,10 @@ class PuffingBillyField extends WatchUi.DataField {
         _heartRate = null;
 
         _planS = 0.0;
+        _courseM = 0.0;
         for (var i = 0; i < _lengths.size(); i += 1) {
             _planS += _lengths[i] / 1000.0 * _paces[i];
+            _courseM += _lengths[i];
         }
     }
 
@@ -265,6 +280,122 @@ class PuffingBillyField extends WatchUi.DataField {
         }
     }
 
+    //! Where a distance along the course sits on the ring, in the degrees
+    //! drawArc wants: 0 at 3 o'clock, counting counter-clockwise. The race
+    //! starts at 12 o'clock and runs clockwise, like a clock face.
+    private function angleAt(d as Float) as Float {
+        var a = 90.0 - 360.0 * d / _courseM;
+        while (a < 0.0) { a += 360.0; }
+        while (a >= 360.0) { a -= 360.0; }
+        return a;
+    }
+
+    //! Green through amber to red as a segment's pace goes from PACE_SPREAD
+    //! faster than its target to the same amount slower.
+    private function paceColour(actual as Float, target as Float) as Number {
+        var t = (actual / target - 1.0) / PACE_SPREAD;
+        if (t < -1.0) { t = -1.0; }
+        if (t > 1.0) { t = 1.0; }
+
+        // Full green at -1, full red at +1, both channels up at 0 for amber.
+        var red = 255;
+        var green = 255;
+        if (t < 0.0) {
+            red = ((1.0 + t) * 255).toNumber();
+        } else {
+            green = ((1.0 - t) * 255).toNumber();
+        }
+        return (red << 16) | (green << 8);
+    }
+
+    //! One arc of the ring, between two distances along the course.
+    //!
+    //! Skips anything that rounds away to nothing, because drawArc truncates
+    //! its angles towards zero and draws a *complete circle* when the two land
+    //! on the same degree — so a sliver of a segment would otherwise paint the
+    //! whole ring its colour.
+    private function arcBetween(
+        dc as Dc, cx as Number, cy as Number, r as Number, d0 as Float, d1 as Float
+    ) as Void {
+        var a0 = angleAt(d0);
+        var a1 = angleAt(d1);
+        if (a0.toNumber() == a1.toNumber()) {
+            return;
+        }
+        dc.drawArc(cx, cy, r, Graphics.ARC_CLOCKWISE, a0, a1);
+    }
+
+    //! The same colour knocked back, for course not yet run.
+    private function dim(colour as Number) as Number {
+        return ((((colour >> 16) & 0xFF) / DIM) << 16) |
+            ((((colour >> 8) & 0xFF) / DIM) << 8) |
+            ((colour & 0xFF) / DIM);
+    }
+
+    //! Progress ring around the rim, with a tick at every gate.
+    //!
+    //! Every segment is coloured by its *target* pace against the course
+    //! average, so the ring is a picture of the route's shape rather than of
+    //! how the run is going — green where the plan is fast, red where it is
+    //! slow, which on this course means green downhill and red up. Nothing here
+    //! reacts to the pace actually being run.
+    //!
+    //! Each segment is laid down dimmed and redrawn at full strength over the
+    //! part already covered, so the plan is legible the whole way round from
+    //! the start and progress reads as it brightening.
+    private function drawRing(dc as Dc, w as Number, h as Number, fg as Number) as Void {
+        var pen = w / 26;
+        var cx = w / 2;
+        var cy = h / 2;
+        var r = (w < h ? w : h) / 2 - pen / 2 - 1;
+        var mean = _planS / (_courseM / 1000.0);
+
+        dc.setPenWidth(pen);
+
+        var done = 0.0;
+        for (var i = 0; i < _lengths.size(); i += 1) {
+            var colour = paceColour(_paces[i], mean);
+            var span = _lengths[i].toFloat();
+
+            dc.setColor(dim(colour), Graphics.COLOR_TRANSPARENT);
+            arcBetween(dc, cx, cy, r, done, done + span);
+
+            // How much of this segment is behind us. Clamped to its nominal
+            // length so overrunning a gate can't bleed into the next arc.
+            var run = 0.0;
+            if (i < _next) {
+                run = span;
+            } else if (i == _next) {
+                run = _distanceM - _segmentStartM;
+                if (run > span) { run = span; }
+                if (run < 0.0) { run = 0.0; }
+            }
+
+            if (run > 0.0) {
+                dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
+                arcBetween(dc, cx, cy, r, done, done + run);
+            }
+            done += span;
+        }
+
+        // Gate ticks, drawn last so they stay legible over any arc colour.
+        dc.setPenWidth(2);
+        dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
+        var inner = r - pen / 2 - 1;
+        var outer = r + pen / 2 + 1;
+        var at = 0.0;
+        for (var i = 0; i < _lengths.size(); i += 1) {
+            var rad = Math.toRadians(angleAt(at));
+            var dx = Math.cos(rad);
+            var dy = Math.sin(rad);
+            dc.drawLine(
+                cx + inner * dx, cy - inner * dy,
+                cx + outer * dx, cy - outer * dy
+            );
+            at += _lengths[i];
+        }
+    }
+
     //! Draw two strings side by side in different fonts, the pair centred
     //! together on x. drawText() takes a single font, so mixing sizes on one
     //! line means measuring both halves and placing each one by hand.
@@ -384,5 +515,8 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawLine(0, h * 38 / 100, w, h * 38 / 100);
         dc.drawLine(0, h * 62 / 100, w, h * 62 / 100);
         dc.drawLine(0, h * 80 / 100, w, h * 80 / 100);
+
+        // Last, because it leaves the pen width and colour where it likes.
+        drawRing(dc, w, h, fg);
     }
 }
