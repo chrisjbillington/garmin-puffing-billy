@@ -42,9 +42,9 @@ class PuffingBillyField extends WatchUi.DataField {
     //! and whatever it shifts towards goes under the bezel — so nothing may be
     //! drawn hard against the edge.
     //!
-    //! Only the bar and the rule are measured against this; the text rows are
-    //! placed by eye and are narrower than it anyway.
-    private const SAFE_INSET = 8;
+    //! The bar, the rule and the pace columns are all measured against this.
+    //! The remaining rows are placed by eye and are narrower than it anyway.
+    private const SAFE_INSET = 10;
 
     //! The progress bar's thickness, as a divisor of the screen width. Given
     //! 390px that is a 10px bar.
