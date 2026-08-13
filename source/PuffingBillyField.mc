@@ -28,6 +28,18 @@ class PuffingBillyField extends WatchUi.DataField {
     //! as a divisor on each colour channel.
     private const DIM = 3;
 
+    //! The ring, as divisors of the screen width: its thickness, and how far
+    //! its inner edge sits in from the edge of the screen. Given 390px that is
+    //! a 10px band from radius 176 to 186.
+    //!
+    //! Placed by its inner edge rather than its outer one, so thinning the ring
+    //! pulls it away from the bezel without disturbing the clearance to the
+    //! text. The margin matters: the panel sits a couple of pixels off from the
+    //! nominal 390x390, so anything drawn hard against the edge clips on one
+    //! side and gaps on the other.
+    private const RING_PEN_DIV = 39;
+    private const RING_INNER_DIV = 20;
+
     private var _names as Array<String>;
     private var _lengths as Array<Number>;
     private var _paces as Array<Float>;
@@ -344,10 +356,10 @@ class PuffingBillyField extends WatchUi.DataField {
     //! part already covered, so the plan is legible the whole way round from
     //! the start and progress reads as it brightening.
     private function drawRing(dc as Dc, w as Number, h as Number, fg as Number) as Void {
-        var pen = w / 26;
+        var pen = w / RING_PEN_DIV;
         var cx = w / 2;
         var cy = h / 2;
-        var r = (w < h ? w : h) / 2 - pen / 2 - 1;
+        var r = (w < h ? w : h) / 2 - w / RING_INNER_DIV + pen / 2;
         var mean = _planS / (_courseM / 1000.0);
 
         dc.setPenWidth(pen);
