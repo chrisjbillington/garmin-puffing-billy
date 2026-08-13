@@ -56,11 +56,13 @@ package: check | $(OUT)
 	$(MONKEYC) -e -o $(IQ)
 
 # Sideload over MTP. Plug the watch in and let gvfs mount it first.
-MOUNT ?= $(firstword $(wildcard /run/user/$(shell id -u)/gvfs/mtp*/*))
+# The glob is expanded by the shell rather than by $(wildcard), because make
+# splits variable values on the space in "Internal Storage" with no way to quote
+# it back together.
 deploy: build
-	@test -n "$(MOUNT)" || { echo "No MTP mount found - is the watch plugged in?"; exit 1; }
-	cp $(PRG) "$(MOUNT)/GARMIN/APPS/"
-	@echo "-> $(MOUNT)/GARMIN/APPS/$(notdir $(PRG))"
+	@apps=$$(echo /run/user/$$(id -u)/gvfs/mtp:host=*/"Internal Storage/GARMIN/Apps"); \
+	test -d "$$apps" || { echo "Watch not mounted at $$apps"; exit 1; }; \
+	gio copy "$(PRG)" "$$apps/$(notdir $(PRG))" && echo "-> $$apps/$(notdir $(PRG))"
 
 clean:
 	rm -rf $(OUT)
