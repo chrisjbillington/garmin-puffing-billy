@@ -28,17 +28,15 @@ class PuffingBillyField extends WatchUi.DataField {
     //! as a divisor on each colour channel.
     private const DIM = 3;
 
-    //! The ring, as divisors of the screen width: its thickness, and how far
-    //! its inner edge sits in from the edge of the screen. Given 390px that is
-    //! a 10px band from radius 176 to 186.
+    //! The progress bar's thickness, and how far the content as a whole keeps
+    //! in from the edge of the screen, both as divisors of the screen width.
+    //! Given 390px that is a 10px bar inside a circle of radius 176.
     //!
-    //! Placed by its inner edge rather than its outer one, so thinning the ring
-    //! pulls it away from the bezel without disturbing the clearance to the
-    //! text. The margin matters: the panel sits a couple of pixels off from the
+    //! The margin matters: the panel sits a couple of pixels off from the
     //! nominal 390x390, so anything drawn hard against the edge clips on one
     //! side and gaps on the other.
-    private const RING_PEN_DIV = 39;
-    private const RING_INNER_DIV = 20;
+    private const BAR_PEN_DIV = 39;
+    private const MARGIN_DIV = 20;
 
     //! Labels and rules, in a slate blue a few stops down from the foreground:
     //! enough contrast to read when looked at, little enough that the eye goes
@@ -273,16 +271,6 @@ class PuffingBillyField extends WatchUi.DataField {
         }
     }
 
-    //! Where a distance along the course sits on the ring, in the degrees
-    //! drawArc wants: 0 at 3 o'clock, counting counter-clockwise. The race
-    //! starts at 12 o'clock and runs clockwise, like a clock face.
-    private function angleAt(d as Float) as Float {
-        var a = 90.0 - 360.0 * d / _courseM;
-        while (a < 0.0) { a += 360.0; }
-        while (a >= 360.0) { a -= 360.0; }
-        return a;
-    }
-
     //! Green through amber to red as a segment's pace goes from PACE_SPREAD
     //! faster than its target to the same amount slower.
     private function paceColour(actual as Float, target as Float) as Number {
@@ -301,23 +289,6 @@ class PuffingBillyField extends WatchUi.DataField {
         return (red << 16) | (green << 8);
     }
 
-    //! One arc of the ring, between two distances along the course.
-    //!
-    //! Skips anything that rounds away to nothing, because drawArc truncates
-    //! its angles towards zero and draws a *complete circle* when the two land
-    //! on the same degree — so a sliver of a segment would otherwise paint the
-    //! whole ring its colour.
-    private function arcBetween(
-        dc as Dc, cx as Number, cy as Number, r as Number, d0 as Float, d1 as Float
-    ) as Void {
-        var a0 = angleAt(d0);
-        var a1 = angleAt(d1);
-        if (a0.toNumber() == a1.toNumber()) {
-            return;
-        }
-        dc.drawArc(cx, cy, r, Graphics.ARC_CLOCKWISE, a0, a1);
-    }
-
     //! The same colour knocked back, for course not yet run.
     private function dim(colour as Number) as Number {
         return ((((colour >> 16) & 0xFF) / DIM) << 16) |
@@ -325,99 +296,118 @@ class PuffingBillyField extends WatchUi.DataField {
             ((colour & 0xFF) / DIM);
     }
 
-    //! Radius of the inner edge of the ring — the circle everything else has to
-    //! stay inside.
-    private function ringInnerR(w as Number, h as Number) as Number {
-        return (w < h ? w : h) / 2 - w / RING_INNER_DIV;
+    //! Radius of the circle the content keeps inside: the face brought in by the
+    //! standard margin.
+    private function contentR(w as Number, h as Number) as Number {
+        return (w < h ? w : h) / 2 - w / MARGIN_DIV;
     }
 
-    //! A horizontal divider at y, spanning the middle three fifths of the chord
-    //! the ring encloses at that height.
-    //!
-    //! Measured off the ring rather than off the screen so the rules always stop
-    //! short of it instead of running under it, and so they draw in shorter as
-    //! they approach the top and bottom of the face — which reads as dividers
-    //! following the shape of the display rather than as a box drawn across it.
-    private function rule(dc as Dc, w as Number, h as Number, y as Number) as Void {
-        var r = ringInnerR(w, h);
+    //! Half the chord that circle cuts at height y, or zero past its top and
+    //! bottom. The width available to anything drawn on that line.
+    private function halfChordAt(w as Number, h as Number, y as Number) as Float {
+        var r = contentR(w, h);
         var dy = y - h / 2;
         if (dy < 0) { dy = -dy; }
         if (dy >= r) {
-            return;
+            return 0.0;
         }
-        // Three fifths of the full chord, so three tenths of it either side.
-        var half = Math.sqrt(r * r - dy * dy) * 3.0 / 5.0;
+        // toFloat() because sqrt() is typed as Float-or-Double, and a chord on a
+        // 390px face has no need of the extra precision.
+        return Math.sqrt(r * r - dy * dy).toFloat();
+    }
+
+    //! A horizontal divider at y, spanning the middle three fifths of what is
+    //! available there — so the rules draw in shorter as they approach the top
+    //! and bottom of the face, which reads as dividers following the shape of
+    //! the display rather than as a box drawn across it.
+    private function rule(dc as Dc, w as Number, h as Number, y as Number) as Void {
+        var half = halfChordAt(w, h, y) * 3.0 / 5.0;
         dc.drawLine(w / 2 - half, y, w / 2 + half, y);
     }
 
-    //! Progress ring around the rim, with a marker at the runner's position.
+    //! Race progression as a horizontal bar centred on y, with a marker at the
+    //! runner's position.
     //!
     //! Every segment is coloured by its *target* pace against the course
-    //! average, so the ring is a picture of the route's shape rather than of
-    //! how the run is going — green where the plan is fast, red where it is
-    //! slow, which on this course means green downhill and red up. Nothing here
+    //! average, so the bar is a picture of the route's shape rather than of how
+    //! the run is going — green where the plan is fast, red where it is slow,
+    //! which on this course means green downhill and red up. Nothing here
     //! reacts to the pace actually being run.
     //!
-    //! Each segment is laid down dimmed and redrawn at full strength over the
-    //! part already covered, so the plan is legible the whole way round from
-    //! the start and progress reads as it brightening.
-    private function drawRing(dc as Dc, w as Number, h as Number, fg as Number) as Void {
-        var pen = w / RING_PEN_DIV;
-        var cx = w / 2;
-        var cy = h / 2;
-        var r = ringInnerR(w, h) + pen / 2;
+    //! Each segment is laid down dimmed and refilled at full strength over the
+    //! part already covered, so the plan is legible end to end from the start
+    //! and progress reads as it brightening from the left.
+    private function drawBar(
+        dc as Dc, w as Number, h as Number, y as Number, fg as Number
+    ) as Void {
+        var pen = w / BAR_PEN_DIV;
+        var top = y - pen / 2;
+
+        // Measured at whichever of the bar's long edges is further from the
+        // middle of the face, so the whole rectangle clears the margin rather
+        // than just its centre line.
+        var far = (y < h / 2) ? top : y + pen / 2;
+        var half = halfChordAt(w, h, far);
+        if (half <= 0.0) {
+            return;
+        }
+
+        var x0 = w / 2 - half;
+        var span = 2.0 * half;
         var mean = _planS / (_courseM / 1000.0);
 
-        dc.setPenWidth(pen);
-
+        // Each segment's right edge is rounded once and reused as the next
+        // one's left, so the seams neither gap nor overlap however the
+        // kilometres divide up.
         var done = 0.0;
-        var here = 0.0;
+        var left = (x0 + 0.5).toNumber();
+        var here = left;
         for (var i = 0; i < _lengths.size(); i += 1) {
             var colour = paceColour(_paces[i], mean);
-            var span = _lengths[i].toFloat();
+            var len = _lengths[i].toFloat();
+            var right = (x0 + span * (done + len) / _courseM + 0.5).toNumber();
 
             dc.setColor(dim(colour), Graphics.COLOR_TRANSPARENT);
-            arcBetween(dc, cx, cy, r, done, done + span);
+            dc.fillRectangle(left, top, right - left, pen);
 
             // How much of this segment is behind us. Clamped to its nominal
-            // length so overrunning a gate can't bleed into the next arc.
+            // length so overrunning a gate can't bleed into the next one.
             var run = 0.0;
             if (i < _next) {
-                run = span;
+                run = len;
             } else if (i == _next) {
                 run = _distanceM - _segmentStartM;
-                if (run > span) { run = span; }
+                if (run > len) { run = len; }
                 if (run < 0.0) { run = 0.0; }
-                here = done + run;
+                here = (x0 + span * (done + run) / _courseM + 0.5).toNumber();
             }
 
             if (run > 0.0) {
+                var upto = (x0 + span * (done + run) / _courseM + 0.5).toNumber();
                 dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
-                arcBetween(dc, cx, cy, r, done, done + run);
+                dc.fillRectangle(left, top, upto - left, pen);
             }
-            done += span;
+
+            done += len;
+            left = right;
         }
 
         // One marker at the runner's position, drawn last so it stays legible
-        // over any arc colour. There used to be a tick at every gate; the
-        // segments are already delimited by the colours changing, and one mark
-        // is found at a glance where one of ten has to be picked out.
-        //
-        // Wider than those ticks were and standing a little proud of the band on
-        // both sides, since it is now the only thing on the ring that moves.
+        // over any segment colour, and standing a little proud of the bar top
+        // and bottom. Pulled in by its own half-width at either end so that it
+        // reads as the first and last thing on the bar rather than overhanging
+        // it — most of a race is spent nowhere near the ends, but the start is
+        // exactly when the field is looked at hardest.
         var markPen = pen / 2 - 1;
-        var inner = r - pen / 2 - markPen / 2;
-        var outer = r + pen / 2 + markPen / 2;
-        var rad = Math.toRadians(angleAt(here));
-        var dx = Math.cos(rad);
-        var dy = Math.sin(rad);
+        var proud = pen / 2 + markPen / 2;
+        var lo = (x0 + 0.5).toNumber() + markPen / 2;
+        var hi = left - markPen / 2;
+        if (here < lo) { here = lo; }
+        if (here > hi) { here = hi; }
 
         dc.setPenWidth(markPen);
         dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(
-            cx + inner * dx, cy - inner * dy,
-            cx + outer * dx, cy - outer * dy
-        );
+        dc.drawLine(here, y - proud, here, y + proud);
     }
 
     //! Draw two strings side by side in different fonts and colours, the pair
@@ -526,15 +516,16 @@ class PuffingBillyField extends WatchUi.DataField {
             "BPM", Graphics.FONT_XTINY, labelColour
         );
 
-        // Rules under the heading and under the pace row. The offsets clear each
-        // row's baseline rather than its line box: fonts here carry several
-        // pixels of descent that none of these strings actually use.
+        // One rule, under the pace row. The heading used to have one too, but
+        // the bar now divides the face there and a hairline a few pixels off it
+        // would only be clutter. The offset clears the row's baseline rather
+        // than its line box: fonts here carry several pixels of descent that
+        // none of these strings actually use.
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(1);
-        rule(dc, w, h, h * 35 / 100);
         rule(dc, w, h, h * 70 / 100);
 
         // Last, because it leaves the pen width and colour where it likes.
-        drawRing(dc, w, h, fg);
+        drawBar(dc, w, h, h * 35 / 100, fg);
     }
 }
