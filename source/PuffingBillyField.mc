@@ -1,6 +1,7 @@
 import Toybox.Activity;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.System;
 import Toybox.WatchUi;
 
 class PuffingBillyField extends WatchUi.DataField {
@@ -18,6 +19,19 @@ class PuffingBillyField extends WatchUi.DataField {
     function compute(info as Activity.Info) as Void {
         var d = info.elapsedDistance;
         _distanceM = (d == null) ? 0.0 : d;
+
+        // Temporary: watch the fix arrive in the simulator console. Null until
+        // the sim's GPS is on and a track is playing, so print that case too
+        // rather than silently skipping it.
+        var loc = info.currentLocation;
+        if (loc == null) {
+            System.println("loc: null");
+        } else {
+            var deg = loc.toDegrees();
+            System.println(
+                "loc: " + deg[0].format("%.6f") + ", " + deg[1].format("%.6f")
+            );
+        }
     }
 
     //! Draw the field. `dc` covers only this field's slice of the screen, so

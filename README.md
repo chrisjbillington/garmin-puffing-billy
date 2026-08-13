@@ -99,3 +99,9 @@ Segments AB and CD. Compute four:
 
   (d1 > 0) != (d2 > 0)  &&  (d3 > 0) != (d4 > 0)
 ```
+
+Cross product cross(a, b, c) here means (b-a)×(c-a) which is:
+```python
+def cross(ax, ay, bx, by, cx, cy):
+    return (bx - ax)*(cy - ay) - (by - ay)*(cx - ax)
+```

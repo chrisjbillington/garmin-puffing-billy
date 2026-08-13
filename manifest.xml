@@ -12,14 +12,13 @@
             <iq:product id="venu441mm"/>
         </iq:products>
 
-        <iq:permissions/>
-
-        <!-- When you get to the real thing, you'll need these:
-
         <iq:permissions>
-            <iq:uses-permission id="ActivityControl"/>   setWorkout()
-            <iq:uses-permission id="Positioning"/>       currentLocation, for waypoints
+            <iq:uses-permission id="Positioning"/>
         </iq:permissions>
+
+        <!-- When you get to the real thing, you'll also need this:
+
+            <iq:uses-permission id="ActivityControl"/>   setWorkout()
 
         and this, to stop the field being offered for every sport in the
         post-install activity-association flow:
