@@ -59,6 +59,13 @@ class PuffingBillyField extends WatchUi.DataField {
     private const CAP_FRAC = 1456.0 / 2400.0;
     private const X_HEIGHT_FRAC = 1082.0 / 2400.0;
 
+    //! Where a pace label sits between the rule above it and the digits below,
+    //! as the fraction D/C of the gap the rest of the top of the face is spaced
+    //! by. At 1 the label is centred between the two; the lower it goes the
+    //! more it belongs to the column under it rather than to the rule, which is
+    //! the whole reason a label is nearer its value than its neighbours.
+    private const LABEL_GAP_RATIO = 0.6;
+
     //! The font every figure on the face is set in, as a height in pixels and a
     //! scalable face. Scalable because the system fonts step straight from
     //! FONT_LARGE at 61px to FONT_NUMBER_MILD at 97px, and these want to sit
@@ -370,12 +377,13 @@ class PuffingBillyField extends WatchUi.DataField {
     //!     G  name baseline to the top of the remaining-distance digits
     //!     H  its baseline to the bottom of the display
     //!
-    //! wanted as A = B = C = E and F = G = H, with D held at the labels' own
-    //! x-height and the pace digits centred on the face. That is seven
-    //! equations for the seven rows, and it falls out top down: centring places
-    //! the paces, D places the labels above them, the labels fix the one gap
-    //! the top group shares, that gap places the bar, and the bar in turn
-    //! places the two rows under it.
+    //! wanted as A = B = C = E and F = G = H, with D a set fraction of C and
+    //! the pace digits centred on the face. That is seven equations for the
+    //! seven rows, and it falls out top down: centring places the paces, then
+    //! the whole top group solves at once — D and C are both multiples of the
+    //! same gap, so the space above the digits divides into 3 + LABEL_GAP_RATIO
+    //! of it — and that gap places the bar, which in turn places the two rows
+    //! under it.
     //!
     //! The pace digits sit on the middle of the face because that is where the
     //! chord is longest, which is what lets their columns stand furthest apart.
@@ -391,13 +399,14 @@ class PuffingBillyField extends WatchUi.DataField {
         var paceBase = h / 2.0 + figCap / 2.0;
         _yPaceValue = yForBaseline(paceBase, _figureFont);
 
-        var labelBase = paceTop - labelX;
+        // A + B + C + D spans the display top to the pace digits, less the two
+        // rows of ink standing in it. Three of those gaps are the group's, the
+        // fourth is D at its own fraction of one.
+        var above = (paceTop - labelX - figCap) / (3.0 + LABEL_GAP_RATIO);
+        var labelBase = paceTop - above * LABEL_GAP_RATIO;
         var labelTop = labelBase - labelX;
         _yPaceLabel = yForBaseline(labelBase, Graphics.FONT_XTINY);
 
-        // A + B + C spans the display top to the labels, less the one row of
-        // digits standing in it, so each is a third of what is left.
-        var above = (labelTop - figCap) / 3.0;
         _yRule = (labelTop - above + 0.5).toNumber();
         _yHr = yForBaseline(labelTop - 2.0 * above, _figureFont);
 
