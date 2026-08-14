@@ -30,6 +30,17 @@ class PuffingBillyField extends WatchUi.DataField {
     //! would stall every later one for the rest of the race.
     private const OVERDISTANCE_M = 200.0;
 
+    //! The distance, in metres, over which pace is averaged against target pace
+    //! before a finish is projected from it. The average is decayed by ground
+    //! covered rather than by time elapsed, so it looks back over the same
+    //! stretch of course however fast that stretch is being run.
+    //!
+    //! 500 m is the length of the shortest segment on this course and a
+    //! twenty-seventh of the whole: long enough that a second's worth of GPS
+    //! scatter counts for almost nothing, short enough that the climb or
+    //! descent underfoot is what the projection is made from.
+    private const PACE_WINDOW_M = 500.0;
+
     //! Pace spread at which a segment's colour saturates, as a fraction of the
     //! course's average pace. The segment targets run from 19% faster than
     //! average to 24% slower, so 0.25 uses most of the ramp without clipping
@@ -182,6 +193,25 @@ class PuffingBillyField extends WatchUi.DataField {
     //! when the watch has nothing to report yet.
     private var _speedMps as Float?;
 
+    //! Time actually taken, and the time the plan allows for the same ground,
+    //! both decayed by the distance run since. Their ratio is how hard the race
+    //! is being run against its target over the last PACE_WINDOW_M or so.
+    //!
+    //! Two sums divided at the end, rather than one averaged ratio, because
+    //! only the ratio of the sums answers the question asked of it: run a
+    //! stretch at a steady fraction of target and it reads that fraction
+    //! exactly, however the samples fell and whatever the target pace was doing
+    //! underneath. A ratio averaged sample by sample reads high instead, since
+    //! a second covering little ground gives a large one and would carry the
+    //! same weight as a second covering plenty.
+    //!
+    //! Both start at a window's worth of the opening target pace. The ratio is
+    //! honest from its first sample but says almost nothing yet, and a race
+    //! whose first stride happened to measure short is not one on for a
+    //! fifty-minute finish.
+    private var _takenS as Float;
+    private var _allowedS as Float;
+
     //! Heart rate in bpm. Null with no strap and no wrist reading yet.
     private var _heartRate as Number?;
 
@@ -238,6 +268,13 @@ class PuffingBillyField extends WatchUi.DataField {
         _segmentStartMs = 0;
         _speedMps = null;
         _heartRate = null;
+        // Seeded as though the window before the start line had been run
+        // exactly to plan: equal totals, so the race opens on its target, and
+        // sized to what a full window holds, so the seed is worth one window of
+        // course and is down to a third of the reading a window into the race.
+        var seeded = _paces[0] * PACE_WINDOW_M / 1000.0;
+        _takenS = seeded;
+        _allowedS = seeded;
 
         var settings = System.getDeviceSettings();
         _screenW = settings.screenWidth;
@@ -312,6 +349,22 @@ class PuffingBillyField extends WatchUi.DataField {
         return (d1 > 0) != (d2 > 0) && (d3 > 0) != (d4 > 0);
     }
 
+    //! Fold one step of `ds` metres taken in `dt` seconds into the running
+    //! totals, first decaying what is already there by the ground just covered.
+    //!
+    //! A step that covered nothing is dropped rather than counted as time lost.
+    //! Standing still is not an effort being held, and what it costs is already
+    //! in the elapsed time both projections are built on; leaving it out is
+    //! also what keeps the totals from ever being asked to divide by zero.
+    private function accumulate(ds as Float, dt as Float) as Void {
+        if (ds <= 0.0 || dt <= 0.0) {
+            return;
+        }
+        var decay = Math.pow(Math.E, -ds / PACE_WINDOW_M).toFloat();
+        _takenS = decay * _takenS + dt;
+        _allowedS = decay * _allowedS + ds / 1000.0 * _paces[_next];
+    }
+
     //! Move on to the next segment, taking the current odometer and timer
     //! readings as the boundary.
     private function advance() as Void {
@@ -334,10 +387,18 @@ class PuffingBillyField extends WatchUi.DataField {
         }
 
         var d = info.elapsedDistance;
-        _distanceM = (d == null) ? 0.0 : d;
+        var distanceM = (d == null) ? 0.0 : d;
 
         var t = info.timerTime;
-        _timerMs = (t == null) ? 0 : t;
+        var timerMs = (t == null) ? 0 : t;
+
+        // Before the odometer and the clock are moved on, and before any gate
+        // is crossed, so that the step just taken is charged to the segment it
+        // was run in.
+        accumulate(distanceM - _distanceM, (timerMs - _timerMs) / 1000.0);
+
+        _distanceM = distanceM;
+        _timerMs = timerMs;
 
         var crossed_gate = false;
         var loc = info.currentLocation;
@@ -412,18 +473,19 @@ class PuffingBillyField extends WatchUi.DataField {
     }
 
     //! The finish time the race is on for if the rest of it is run at the
-    //! effort being held now: the fraction the current pace makes of the
-    //! current segment's target, applied to every segment still to come. Each
-    //! is stretched against its own target rather than against a flat pace, so
-    //! the climbs and descents ahead still count for what they are worth.
+    //! effort being held now: the fraction of target pace the last
+    //! PACE_WINDOW_M has been run at, applied to every segment still to come.
+    //! Each is stretched against its own target rather than against a flat
+    //! pace, so the climbs and descents ahead still count for what they are
+    //! worth.
     //!
-    //! Null when the watch has no pace to read the effort off.
+    //! Null until some ground has been covered to read the effort off.
     private function effortFinishS() as Float? {
-        var pace = currentPaceS();
-        if (pace == null) {
+        if (_allowedS <= 0.0) {
             return null;
         }
-        return _timerMs / 1000.0 + pace / _paces[_next] * planRemainingS();
+        return _timerMs / 1000.0
+            + _takenS / _allowedS * planRemainingS();
     }
 
     //! A duration in seconds as h:mm:ss, or m:ss under the hour.
