@@ -79,11 +79,10 @@ class Layout {
     var yName as Number;
     var yRemaining as Number;
 
-    //! The rows of the half-height field: one block of a label line over a
-    //! figure, and the step down to the next block.
-    var yProjLabel as Number;
-    var yProjValue as Number;
-    var yProjPitch as Number;
+    //! The rows of the half-height field: for each projection, the line naming
+    //! it and the line of figures under that.
+    var yProjLabel as Array<Number>;
+    var yProjValue as Array<Number>;
     var yTrain as Number;
 
     function initialize(face as Face) {
@@ -101,9 +100,8 @@ class Layout {
         yBar = 0;
         yName = 0;
         yRemaining = 0;
-        yProjLabel = 0;
-        yProjValue = 0;
-        yProjPitch = 0;
+        yProjLabel = [0, 0] as Array<Number>;
+        yProjValue = [0, 0] as Array<Number>;
         yTrain = 0;
     }
 
@@ -133,6 +131,49 @@ class Layout {
         }
     }
 
+    //! How much of a span a run of rows fills with ink: what each reaches above
+    //! its baseline plus what it reaches below.
+    private function inkHeight(
+        up as Array<Float>, down as Array<Float>
+    ) as Float {
+        var ink = 0.0;
+        for (var i = 0; i < up.size(); i += 1) {
+            ink += up[i] + down[i];
+        }
+        return ink;
+    }
+
+    //! The gap that fills what is left of a span once that ink is taken out.
+    //! Each weight is a share of it: one for the gap before each row, and one
+    //! more to close the span.
+    private function unitGap(
+        span as Float, up as Array<Float>, down as Array<Float>,
+        weights as Array<Float>
+    ) as Float {
+        var shares = 0.0;
+        for (var i = 0; i < weights.size(); i += 1) {
+            shares += weights[i];
+        }
+        var gap = (span - inkHeight(up, down)) / shares;
+        return gap > 0.0 ? gap : 0.0;
+    }
+
+    //! The baselines of a run of rows stacked down from `top`, each preceded by
+    //! its weight's worth of the gap.
+    private function stack(
+        top as Float, gap as Float, up as Array<Float>, down as Array<Float>,
+        weights as Array<Float>
+    ) as Array<Float> {
+        var baselines = [] as Array<Float>;
+        var y = top;
+        for (var i = 0; i < up.size(); i += 1) {
+            y += weights[i] * gap + up[i];
+            baselines.add(y);
+            y += down[i];
+        }
+        return baselines;
+    }
+
     //! Solve the vertical rhythm of the whole face.
     //!
     //! Reading down it, the gaps are
@@ -149,10 +190,8 @@ class Layout {
     //! wanted as A = B = C = E and F = G = H, with D a set fraction of C and
     //! the pace digits centred on the face. That is seven equations for the
     //! seven rows, and it falls out top down: centring places the paces, then
-    //! the whole top group solves at once — D and C are both multiples of the
-    //! same gap, so the space above the digits divides into 3 + LABEL_GAP_RATIO
-    //! of it — and that gap places the bar, which in turn places the two rows
-    //! under it.
+    //! the group above them solves against that, and its gap places the bar,
+    //! which in turn spans the group below.
     //!
     //! The pace digits sit on the middle of the face because that is where the
     //! chord is longest, which is what lets their columns stand furthest apart.
@@ -167,29 +206,31 @@ class Layout {
         var paceBase = h / 2.0 + figCap / 2.0;
         yPaceValue = Roboto.yForBaseline(paceBase, figureFont);
 
-        // A + B + C + D spans the display top to the pace digits, less the two
-        // rows of ink standing in it. Three of those gaps are the group's, the
-        // fourth is D at its own fraction of one.
-        var above = (paceTop - labelX - figCap) / (3.0 + LABEL_GAP_RATIO);
-        var labelBase = paceTop - above * LABEL_GAP_RATIO;
-        var labelTop = labelBase - labelX;
-        yPaceLabel = Roboto.yForBaseline(labelBase, Graphics.FONT_XTINY);
-
-        yRule = (labelTop - above + 0.5).toNumber();
-        yHr = Roboto.yForBaseline(labelTop - 2.0 * above, figureFont);
+        // The heart rate, the rule and the pace label, spanning the display top
+        // to the pace digits: gaps A, B and C before them and D closing on the
+        // digits. The rule is a row of no ink at all.
+        var topUp = [figCap, 0.0, labelX] as Array<Float>;
+        var topDown = [0.0, 0.0, 0.0] as Array<Float>;
+        var topGaps = [1.0, 1.0, 1.0, LABEL_GAP_RATIO] as Array<Float>;
+        var above = unitGap(paceTop, topUp, topDown, topGaps);
+        var upperRows = stack(0.0, above, topUp, topDown, topGaps);
+        yHr = Roboto.yForBaseline(upperRows[0], figureFont);
+        yRule = (upperRows[1] + 0.5).toNumber();
+        yPaceLabel = Roboto.yForBaseline(upperRows[2], Graphics.FONT_XTINY);
 
         // E closes the top group, and the bar hangs its own half width below.
         yBar = (paceBase + above + barPen / 2.0 + 0.5).toNumber();
 
-        // F + G + H likewise, over the two rows of ink below the bar.
-        var barBottom = yBar + barPen / 2;
-        var below = (h - barBottom - nameCap - figCap) / 3.0;
-        yName = Roboto.yForBaseline(
-            barBottom + below + nameCap, Graphics.FONT_TINY
-        );
-        yRemaining = Roboto.yForBaseline(
-            barBottom + 2.0 * below + nameCap + figCap, figureFont
-        );
+        // The waypoint name and the distance to it, spanning the bar to the
+        // bottom of the display: F and G before them and H closing.
+        var barBottom = (yBar + barPen / 2).toFloat();
+        var lowUp = [nameCap, figCap] as Array<Float>;
+        var lowDown = [0.0, 0.0] as Array<Float>;
+        var lowGaps = [1.0, 1.0, 1.0] as Array<Float>;
+        var below = unitGap(h - barBottom, lowUp, lowDown, lowGaps);
+        var lowerRows = stack(barBottom, below, lowUp, lowDown, lowGaps);
+        yName = Roboto.yForBaseline(lowerRows[0], Graphics.FONT_TINY);
+        yRemaining = Roboto.yForBaseline(lowerRows[1], figureFont);
 
         paceColumn = paceColumnOffset(dc, paceBase);
     }
@@ -209,8 +250,8 @@ class Layout {
         dc as Dc, labels as Array<String>, train as Graphics.BitmapReference
     ) as Void {
         var h = dc.getHeight();
-        var nameUp = Roboto.inkUp(Graphics.FONT_XTINY);
-        var nameDown = Roboto.inkDown(Graphics.FONT_XTINY);
+        var labelUp = Roboto.inkUp(Graphics.FONT_XTINY);
+        var labelDown = Roboto.inkDown(Graphics.FONT_XTINY);
         var figCap = Roboto.capHeight(figureFont);
 
         // The figure lines are the wide ones, measured on the longest they get:
@@ -230,22 +271,34 @@ class Layout {
         var span = _face.reachFor(widest / 2.0) - _face.nearEdge();
         if (span > h) { span = h.toFloat(); }
 
-        // Four rows of ink, and between and before them two full gaps and two
-        // at the label ratio, so that each label reads as belonging to the
-        // figures under it rather than to the block above.
-        var ink = 2.0 * (nameUp + nameDown + figCap);
-        var gaps = 2.0 + 2.0 * LABEL_GAP_RATIO;
-        var gap = (span - ink) / gaps;
-        if (gap < 0.0) { gap = 0.0; }
-        var inner = gap * LABEL_GAP_RATIO;
-
+        // Four rows of ink: a label at the ratio above its own figures, a full
+        // gap between the blocks, and a full gap at the near end of the band.
+        // The far end is simply where the block stops, so the whole thing
+        // mirrors about the near end whichever way up the field has been put.
         var lower = _face.belowCentre();
-        var top = lower ? gap : h - (ink + gaps * gap);
-        yProjLabel = Roboto.yForBaseline(top + nameUp, Graphics.FONT_XTINY);
-        yProjValue = Roboto.yForBaseline(
-            top + nameUp + nameDown + inner + figCap, figureFont
-        );
-        yProjPitch = (nameUp + nameDown + inner + figCap + gap + 0.5).toNumber();
+        var r = LABEL_GAP_RATIO;
+        var up = [labelUp, figCap, labelUp, figCap] as Array<Float>;
+        var down = [labelDown, 0.0, labelDown, 0.0] as Array<Float>;
+        var gaps = lower
+            ? ([1.0, r, 1.0, r, 0.0] as Array<Float>)
+            : ([0.0, r, 1.0, r, 1.0] as Array<Float>);
+
+        // A band too shallow for its own ink is filled from the near end and
+        // allowed to run off the far one, where there was no width to draw in
+        // anyway.
+        var ink = inkHeight(up, down);
+        if (span < ink) { span = ink; }
+
+        var gap = unitGap(span, up, down, gaps);
+        var rows = stack(lower ? 0.0 : h - span, gap, up, down, gaps);
+        yProjLabel = [
+            Roboto.yForBaseline(rows[0], Graphics.FONT_XTINY),
+            Roboto.yForBaseline(rows[2], Graphics.FONT_XTINY)
+        ] as Array<Number>;
+        yProjValue = [
+            Roboto.yForBaseline(rows[1], figureFont),
+            Roboto.yForBaseline(rows[3], figureFont)
+        ] as Array<Number>;
 
         // Put the image as far towards the outer edge as the circular safe
         // inset permits. The reach is measured at its top corners, not merely

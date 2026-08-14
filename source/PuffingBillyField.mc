@@ -269,14 +269,13 @@ class PuffingBillyField extends WatchUi.DataField {
                 ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
                 : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
 
-            var step = i * _layout.yProjPitch;
             dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                w / 2, _layout.yProjLabel + step, Graphics.FONT_XTINY,
+                w / 2, _layout.yProjLabel[i], Graphics.FONT_XTINY,
                 _projLabels[i], centre
             );
             drawPair(
-                dc, w, _layout.yProjValue + step,
+                dc, w, _layout.yProjValue[i],
                 Fmt.duration(finish), _layout.figureFont, fg,
                 Fmt.standing(off), _layout.figureFont, colour
             );
