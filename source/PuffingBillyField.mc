@@ -3,12 +3,15 @@ import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
+import Toybox.System;
 import Toybox.WatchUi;
 
 //! A data field for a race on a fixed course, split into segments by named
-//! waypoints. It shows how far is left to the next waypoint, how the segment is
-//! being run against its target pace, and a bar giving the shape of the whole
-//! course at a glance.
+//! waypoints. Given the whole face it shows how far is left to the next
+//! waypoint, how the segment is being run against its target pace, and a bar
+//! giving the shape of the whole course at a glance. Given half the face there
+//! is no room for any of that, so it shows the two finish times the race is on
+//! for instead, and how each stands against the plan.
 //!
 //! The watch does not know the course: it is compiled in as a JSON resource
 //! built by segments/make_segments.py. See README.md for that pipeline.
@@ -59,6 +62,13 @@ class PuffingBillyField extends WatchUi.DataField {
     private const CAP_FRAC = 1456.0 / 2400.0;
     private const X_HEIGHT_FRAC = 1082.0 / 2400.0;
 
+    //! How far a name's ink reaches either side of its baseline, on the same
+    //! scale. The half-height layout sets a name hard against the figures under
+    //! it, and there the x-height is not what comes closest to them: the names
+    //! run from a stem 1557 up to a tail 426 down.
+    private const NAME_INK_UP = 1557.0 / 2400.0;
+    private const NAME_INK_DOWN = 426.0 / 2400.0;
+
     //! The narrowest blank a digit carries beside its ink, on the same scale.
     //! Glyphs are spaced by their advance, which includes that blank, so a row
     //! measured with getTextWidthInPixels() reads wider than what is drawn.
@@ -86,6 +96,16 @@ class PuffingBillyField extends WatchUi.DataField {
     private const FIGURE_FONT_PX = 70;
     private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
 
+    //! The same face at the size half the display can carry, which is a good
+    //! deal less than the whole one. A finish time and its standing share a
+    //! line, and two of those have to stack inside a band whose far end tapers
+    //! away into the bezel — so the size pays twice over, once in the width
+    //! that pushes the line in towards the middle of the face and again in the
+    //! depth it takes out of the stack. At 48px both lines clear the inset with
+    //! a standing run out to two digits of minutes, and the figures still hang
+    //! clear of the tails of the name over them.
+    private const FIGURE_FONT_HALF_PX = 48;
+
     //! Labels and rules, in a slate blue a few stops down from the foreground:
     //! enough contrast to read when looked at, little enough that the eye goes
     //! to the numbers rather than to what they are called. The upcoming
@@ -102,16 +122,32 @@ class PuffingBillyField extends WatchUi.DataField {
     private const NAME_ON_DARK = 0x74BEF5;     // 10.4:1 on black
     private const NAME_ON_LIGHT = 0x14508A;    // 8.3:1 on white
 
+    //! Where a projection stands against the plan, green when the race is being
+    //! run up on it and red when it is being run down. Picked to the same
+    //! weight as the labels, near 9:1 on their own background, so the colour
+    //! carries the sense of the number without shouting over the figures.
+    private const AHEAD_ON_DARK = 0x4CCB6A;    // 10.1:1 on black
+    private const AHEAD_ON_LIGHT = 0x0A5A1E;   // 8.4:1 on white
+    private const BEHIND_ON_DARK = 0xFF8A7A;   // 9.2:1 on black
+    private const BEHIND_ON_LIGHT = 0x8C1A1A;  // 9.2:1 on white
+
     private var _names as Array<String>;
     private var _lengths as Array<Number>;
     private var _paces as Array<Float>;
     private var _gates as Array<Number>;
 
-    //! Total course length in metres, and the distance-weighted average of the
-    //! segment target paces in seconds per km. Both fixed for the race, so
-    //! worked out once rather than on every draw.
+    //! Total course length in metres, the time the whole plan comes to in
+    //! seconds, and the distance-weighted average of the segment target paces
+    //! in seconds per km. All fixed for the race, so worked out once rather
+    //! than on every draw.
     private var _courseM as Float;
+    private var _planS as Float;
     private var _meanPaceS as Float;
+
+    //! Plan time still to come once each segment has been finished, in seconds,
+    //! so that projecting the rest of the race is a lookup and a part-segment
+    //! rather than a walk down the course.
+    private var _planAfter as Array<Float>;
 
     //! Index of the gate being watched for, so equal to the segment count once
     //! the last one has been crossed. Gates are tested one at a time and in
@@ -149,12 +185,28 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Heart rate in bpm. Null with no strap and no wrist reading yet.
     private var _heartRate as Number?;
 
-    //! The figure font, built once. Falls back to FONT_LARGE on a device that
-    //! cannot supply the face at the size asked for.
+    //! The figure font, built in onLayout() at whichever size the field has the
+    //! room for. Falls back to FONT_LARGE on a device that cannot supply the
+    //! face at the size asked for.
     private var _figureFont as FontType;
 
-    //! The vertical rhythm, in pixels down the face, solved in onLayout(). Each
-    //! is the y a row is drawn at, not the top of its ink.
+    //! The whole display, and where in it the field has been placed. A field
+    //! given only part of the face sits off the middle of the circle, so it is
+    //! the screen and this offset, not the field's own box, that say how much
+    //! width a row has. Every data field layout on this face is full width, so
+    //! the field's horizontal middle is the circle's and only y is needed.
+    private var _screenW as Number;
+    private var _screenH as Number;
+    private var _offY as Number;
+
+    //! Whether the field has been given so little of the display that the
+    //! projections are drawn in place of the race detail.
+    private var _half as Boolean;
+
+    //! The vertical rhythm, in pixels down the field, solved in onLayout().
+    //! Each is the y a row is drawn at, not the top of its ink. The first set
+    //! lays out the whole face, the second the half-height field: one block of
+    //! a label line over a figure, and the step down to the next block.
     private var _yHr as Number;
     private var _yRule as Number;
     private var _yPaceLabel as Number;
@@ -162,6 +214,9 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _yBar as Number;
     private var _yName as Number;
     private var _yRemaining as Number;
+    private var _yProjLabel as Number;
+    private var _yProjValue as Number;
+    private var _yProjPitch as Number;
 
     function initialize() {
         DataField.initialize();
@@ -184,15 +239,15 @@ class PuffingBillyField extends WatchUi.DataField {
         _speedMps = null;
         _heartRate = null;
 
-        _figureFont = Graphics.FONT_LARGE;
-        var scalable = Graphics.getVectorFont({
-            :face => FIGURE_FONT_FACE, :size => FIGURE_FONT_PX
-        });
-        if (scalable != null) {
-            _figureFont = scalable;
-        }
+        var settings = System.getDeviceSettings();
+        _screenW = settings.screenWidth;
+        _screenH = settings.screenHeight;
 
-        // Placed properly by onLayout(), which runs before the first onUpdate().
+        // All placed properly by onLayout(), which runs before the first
+        // onUpdate().
+        _figureFont = Graphics.FONT_LARGE;
+        _offY = 0;
+        _half = false;
         _yHr = 0;
         _yRule = 0;
         _yPaceLabel = 0;
@@ -200,14 +255,24 @@ class PuffingBillyField extends WatchUi.DataField {
         _yBar = 0;
         _yName = 0;
         _yRemaining = 0;
+        _yProjLabel = 0;
+        _yProjValue = 0;
+        _yProjPitch = 0;
 
-        var planS = 0.0;
         _courseM = 0.0;
+        _planS = 0.0;
         for (var i = 0; i < _lengths.size(); i += 1) {
-            planS += _lengths[i] / 1000.0 * _paces[i];
             _courseM += _lengths[i];
+            _planS += _lengths[i] / 1000.0 * _paces[i];
         }
-        _meanPaceS = planS / (_courseM / 1000.0);
+        _meanPaceS = _planS / (_courseM / 1000.0);
+
+        _planAfter = [] as Array<Float>;
+        var done = 0.0;
+        for (var i = 0; i < _lengths.size(); i += 1) {
+            done += _lengths[i] / 1000.0 * _paces[i];
+            _planAfter.add(_planS - done);
+        }
     }
 
     //! Twice the signed area of the triangle abc, which is positive when c lies
@@ -333,11 +398,63 @@ class PuffingBillyField extends WatchUi.DataField {
         return (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
     }
 
-    //! Half the width available at height y, inside the circle the face leaves
-    //! once SAFE_INSET is taken off it. Zero past that circle's top and bottom.
-    private function safeHalfWidthAt(w as Number, h as Number, y as Number) as Float {
-        var r = w / 2 - SAFE_INSET;
-        var dy = y - h / 2;
+    //! Plan time still to run, in seconds: what is left of the current segment
+    //! at its own target pace, and every segment after it at theirs.
+    private function planRemainingS() as Float {
+        return remainingM() / 1000.0 * _paces[_next] + _planAfter[_next];
+    }
+
+    //! The finish time the race is on for if the rest of it is run to plan, in
+    //! seconds of timer time. Its standing against _planS is just the time won
+    //! or lost so far, since everything ahead is being counted at its target.
+    private function targetFinishS() as Float {
+        return _timerMs / 1000.0 + planRemainingS();
+    }
+
+    //! The finish time the race is on for if the rest of it is run at the
+    //! effort being held now: the fraction the current pace makes of the
+    //! current segment's target, applied to every segment still to come. Each
+    //! is stretched against its own target rather than against a flat pace, so
+    //! the climbs and descents ahead still count for what they are worth.
+    //!
+    //! Null when the watch has no pace to read the effort off.
+    private function effortFinishS() as Float? {
+        var pace = currentPaceS();
+        if (pace == null) {
+            return null;
+        }
+        return _timerMs / 1000.0 + pace / _paces[_next] * planRemainingS();
+    }
+
+    //! A duration in seconds as h:mm:ss, or m:ss under the hour.
+    private function timeString(s as Float?) as String {
+        if (s == null || s < 0.0) {
+            return "-:--:--";
+        }
+        var whole = (s + 0.5).toNumber();
+        var seconds = (whole % 60).format("%02d");
+        if (whole < 3600) {
+            return (whole / 60).format("%d") + ":" + seconds;
+        }
+        return (whole / 3600).format("%d") + ":"
+            + (whole / 60 % 60).format("%02d") + ":" + seconds;
+    }
+
+    //! Where a projection stands against the plan, as a signed m:ss. Negative
+    //! is time in hand.
+    private function standingString(offS as Float) as String {
+        var ahead = offS < 0.0;
+        var whole = ((ahead ? -offS : offS) + 0.5).toNumber();
+        return (ahead ? "-" : "+")
+            + (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
+    }
+
+    //! Half the width available at height y down the field, inside the circle
+    //! the face leaves once SAFE_INSET is taken off it. Zero past that circle's
+    //! top and bottom.
+    private function safeHalfWidthAt(y as Number) as Float {
+        var r = _screenW / 2 - SAFE_INSET;
+        var dy = _offY + y - _screenH / 2;
         if (dy < 0) { dy = -dy; }
         if (dy >= r) {
             return 0.0;
@@ -345,6 +462,17 @@ class PuffingBillyField extends WatchUi.DataField {
         // toFloat() because sqrt() is typed as Float-or-Double, and a chord on a
         // 390px face has no need of the extra precision.
         return Math.sqrt(r * r - dy * dy).toFloat();
+    }
+
+    //! The same circle read the other way: how far from the middle of the face
+    //! a row reaching `half` pixels either side of centre may be drawn and
+    //! still clear the inset.
+    private function reachFor(half as Float) as Float {
+        var r = _screenW / 2 - SAFE_INSET;
+        if (half >= r) {
+            return 0.0;
+        }
+        return Math.sqrt(r * r - half * half).toFloat();
     }
 
     //! The height of a capital, and of a lowercase letter with neither stem nor
@@ -426,8 +554,94 @@ class PuffingBillyField extends WatchUi.DataField {
         );
     }
 
+    //! Solve the vertical rhythm of the half-height field: two blocks, each a
+    //! line naming a projection over the finish time it is heading for and the
+    //! standing beside it, with the label nearer its own figures than the block
+    //! above by the same LABEL_GAP_RATIO the whole face is spaced by.
+    //!
+    //! Both blocks are built out from whichever end of the band is nearer the
+    //! middle of the face, since that is the end with width in it; the other
+    //! tapers into the bezel and is left empty. How far they may run is set by
+    //! the widest of the four rows, and the block is spaced to reach exactly
+    //! that far — so the same solve gives the same layout whether the field
+    //! has been put above the middle of the face or below it.
+    private function layOutHalf(dc as Dc) as Void {
+        var h = dc.getHeight();
+        var nameUp = Graphics.getFontHeight(Graphics.FONT_XTINY) * NAME_INK_UP;
+        var nameDown = Graphics.getFontHeight(Graphics.FONT_XTINY) * NAME_INK_DOWN;
+        var figCap = capHeight(_figureFont);
+
+        // The figure lines are the wide ones, measured on the longest they get:
+        // a finish over the hour, and a standing run out to two digits of
+        // minutes. The names are shorter than that but are checked anyway,
+        // since it is the figure size rather than they that is tuned.
+        var widest = dc.getTextWidthInPixels("0:00:00", _figureFont)
+            + dc.getWidth() / 40
+            + dc.getTextWidthInPixels("+00:00", _figureFont);
+        var named = dc.getTextWidthInPixels("at current effort", Graphics.FONT_XTINY);
+        if (named > widest) {
+            widest = named;
+        }
+
+        // Which end of the band is the near one, and how far it already stands
+        // from the middle of the face. Zero for a band that straddles the
+        // middle, which has its widest point inside it rather than at an edge.
+        var down = (2 * _offY + h) > _screenH;
+        var near = down
+            ? _offY - _screenH / 2.0
+            : _screenH / 2.0 - (_offY + h);
+        if (near < 0.0) { near = 0.0; }
+
+        var span = reachFor(widest / 2.0) - near;
+        if (span > h) { span = h; }
+
+        // Four rows of ink, and between and before them two full gaps and two
+        // at the label ratio, so that each name reads as belonging to the
+        // figures under it rather than to the block above.
+        var ink = 2.0 * (nameUp + nameDown + figCap);
+        var gaps = 2.0 + 2.0 * LABEL_GAP_RATIO;
+        var gap = (span - ink) / gaps;
+        if (gap < 0.0) { gap = 0.0; }
+        var inner = gap * LABEL_GAP_RATIO;
+
+        var top = down ? gap : h - (ink + gaps * gap);
+        _yProjLabel = yForBaseline(top + nameUp, Graphics.FONT_XTINY);
+        _yProjValue = yForBaseline(
+            top + nameUp + nameDown + inner + figCap, _figureFont
+        );
+        _yProjPitch =
+            (nameUp + nameDown + inner + figCap + gap + 0.5).toNumber();
+    }
+
+    //! Take the size and placing the watch has given the field, and lay it out
+    //! to suit. Placing comes from the obscurity flags, which name the edges of
+    //! the display the field is up against.
     function onLayout(dc as Dc) as Void {
-        layOut(dc);
+        var h = dc.getHeight();
+        var obscurity = getObscurityFlags();
+        if ((obscurity & DataField.OBSCURE_TOP) != 0) {
+            _offY = 0;
+        } else if ((obscurity & DataField.OBSCURE_BOTTOM) != 0) {
+            _offY = _screenH - h;
+        } else {
+            _offY = (_screenH - h) / 2;
+        }
+        _half = 4 * h < 3 * _screenH;
+
+        _figureFont = Graphics.FONT_LARGE;
+        var scalable = Graphics.getVectorFont({
+            :face => FIGURE_FONT_FACE,
+            :size => _half ? FIGURE_FONT_HALF_PX : FIGURE_FONT_PX
+        });
+        if (scalable != null) {
+            _figureFont = scalable;
+        }
+
+        if (_half) {
+            layOutHalf(dc);
+        } else {
+            layOut(dc);
+        }
     }
 
     //! How far either side of centre the outer pace columns sit, so that they
@@ -442,7 +656,7 @@ class PuffingBillyField extends WatchUi.DataField {
     //!
     //! The labels are centred on the same columns and are the shorter row, so
     //! they follow the paces out without needing to be measured themselves.
-    private function paceColumnOffset(dc as Dc, w as Number, h as Number) as Float {
+    private function paceColumnOffset(dc as Dc) as Float {
         var baseline = _yPaceValue
             - Graphics.getFontHeight(_figureFont) / 2
             + Graphics.getFontAscent(_figureFont);
@@ -451,7 +665,7 @@ class PuffingBillyField extends WatchUi.DataField {
         // ink stops short by a side bearing at each end.
         var half = dc.getTextWidthInPixels("0:00", _figureFont) / 2.0
             - Graphics.getFontHeight(_figureFont) * DIGIT_BEARING_FRAC;
-        return safeHalfWidthAt(w, h, baseline) - half;
+        return safeHalfWidthAt(baseline) - half;
     }
 
     //! Green through amber to red as a segment's target pace goes from
@@ -483,8 +697,8 @@ class PuffingBillyField extends WatchUi.DataField {
     //! available there — so the rules draw in shorter as they approach the top
     //! and bottom of the face, which reads as dividers following the shape of
     //! the display rather than as a box drawn across it.
-    private function drawRule(dc as Dc, w as Number, h as Number, y as Number) as Void {
-        var half = safeHalfWidthAt(w, h, y) * 3.0 / 5.0;
+    private function drawRule(dc as Dc, w as Number, y as Number) as Void {
+        var half = safeHalfWidthAt(y) * 3.0 / 5.0;
         dc.drawLine(w / 2 - half, y, w / 2 + half, y);
     }
 
@@ -498,7 +712,7 @@ class PuffingBillyField extends WatchUi.DataField {
     //! part already covered, so the plan is legible end to end from the start
     //! and progress reads as it brightening from the left.
     private function drawBar(
-        dc as Dc, w as Number, h as Number, y as Number, fg as Number
+        dc as Dc, w as Number, y as Number, fg as Number
     ) as Void {
         var pen = w / BAR_PEN_DIV;
         var top = y - pen / 2;
@@ -506,8 +720,8 @@ class PuffingBillyField extends WatchUi.DataField {
         // Measured at whichever of the bar's long edges is further from the
         // middle of the face, so the whole rectangle clears the inset rather
         // than just its centre line.
-        var far = (y < h / 2) ? top : y + pen / 2;
-        var half = safeHalfWidthAt(w, h, far);
+        var far = (_offY + y < _screenH / 2) ? top : y + pen / 2;
+        var half = safeHalfWidthAt(far);
         if (half <= 0.0) {
             return;
         }
@@ -571,24 +785,65 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawLine(here, y - proud, here, y + proud);
     }
 
-    //! Draw a value and its unit side by side, the pair centred together on the
+    //! Draw two runs of text side by side, the pair centred together on the
     //! face. drawText() takes one font and the device one colour, so mixing
     //! either on a line means measuring both halves and placing each by hand.
-    private function drawValueUnit(
-        dc as Dc, w as Number, y as Number,
-        value as String, valueFont as FontType, valueColour as Number,
-        unit as String, unitColour as Number
+    private function drawPair(
+        dc as Dc, w as Number, y as Number, gap as Number,
+        left as String, leftFont as FontType, leftColour as Number,
+        right as String, rightFont as FontType, rightColour as Number
     ) as Void {
-        var gap = w / 40;
-        var valueW = dc.getTextWidthInPixels(value, valueFont);
-        var unitW = dc.getTextWidthInPixels(unit, Graphics.FONT_XTINY);
-        var start = w / 2 - (valueW + gap + unitW) / 2;
+        var leftW = dc.getTextWidthInPixels(left, leftFont);
+        var rightW = dc.getTextWidthInPixels(right, rightFont);
+        var start = w / 2 - (leftW + gap + rightW) / 2;
         var justify = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
 
-        dc.setColor(valueColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(start, y, valueFont, value, justify);
-        dc.setColor(unitColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(start + valueW + gap, y, Graphics.FONT_XTINY, unit, justify);
+        dc.setColor(leftColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(start, y, leftFont, left, justify);
+        dc.setColor(rightColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(start + leftW + gap, y, rightFont, right, justify);
+    }
+
+    //! Draw the half-height field: the two finish times the race is on for,
+    //! each under the name of the pace it assumes and beside where it stands
+    //! against the plan.
+    private function drawProjections(
+        dc as Dc, w as Number,
+        fg as Number, labelColour as Number, dark as Boolean
+    ) as Void {
+        var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
+        var labels = ["at target pace", "at current effort"];
+        var finishes = [targetFinishS(), effortFinishS()];
+
+        for (var i = 0; i < 2; i += 1) {
+            var finish = finishes[i] as Float?;
+
+            // Both are measured against the same planned finish, so the two
+            // standings read against each other: one is the time the race has
+            // won or cost so far, the other where holding this effort carries
+            // that to by the line.
+            var standing = "-:--";
+            var colour = labelColour;
+            if (finish != null) {
+                var off = finish - _planS;
+                standing = standingString(off);
+                colour = (off < 0.0)
+                    ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
+                    : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
+            }
+
+            var step = i * _yProjPitch;
+            dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
+            dc.drawText(
+                w / 2, _yProjLabel + step, Graphics.FONT_XTINY,
+                labels[i] as String, centre
+            );
+            drawPair(
+                dc, w, _yProjValue + step, w / 40,
+                timeString(finish), _figureFont, fg,
+                standing, _figureFont, colour
+            );
+        }
     }
 
     //! Draw the field. `dc` is the whole round face, but it is sized off
@@ -620,20 +875,27 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
+        // Half the display has no room for the race detail, so it carries where
+        // the race is going instead.
+        if (_half) {
+            drawProjections(dc, w, fg, labelColour, dark);
+            return;
+        }
+
         // Three digits and a short unit, high on the face where it is narrow:
         // still the row with the most room to spare at the shared size.
         var hr = _heartRate;
-        drawValueUnit(
-            dc, w, _yHr,
+        drawPair(
+            dc, w, _yHr, w / 40,
             (hr == null ? "---" : hr.format("%d")), _figureFont, fg,
-            "BPM", labelColour
+            "BPM", Graphics.FONT_XTINY, labelColour
         );
 
         // Three paces straddling the middle of the face, each label centred over
         // its value, the columns as far apart as they will go.
         var labels = ["target", "segment", "pace"];
         var paces = [_paces[_next], segmentPaceS(), currentPaceS()];
-        var col = paceColumnOffset(dc, w, h);
+        var col = paceColumnOffset(dc);
 
         for (var i = 0; i < 3; i += 1) {
             var x = (w / 2 + (i - 1) * col).toNumber();
@@ -657,17 +919,17 @@ class PuffingBillyField extends WatchUi.DataField {
         // the three: the value runs to five characters once remainingM() goes
         // negative on the approach to a gate, and "km" hangs off the end of it.
         // That, rather than the rows above, is what holds its size down.
-        drawValueUnit(
-            dc, w, _yRemaining,
+        drawPair(
+            dc, w, _yRemaining, w / 40,
             (remainingM() / 1000.0).format("%.2f"), _figureFont, fg,
-            "km", labelColour
+            "km", Graphics.FONT_XTINY, labelColour
         );
 
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(1);
-        drawRule(dc, w, h, _yRule);
+        drawRule(dc, w, _yRule);
 
         // Last, because it leaves the pen width and colour where it likes.
-        drawBar(dc, w, h, _yBar, fg);
+        drawBar(dc, w, _yBar, fg);
     }
 }
