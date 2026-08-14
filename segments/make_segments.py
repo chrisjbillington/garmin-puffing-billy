@@ -15,10 +15,10 @@ bearing between the two adjacent track points keeps the heading from swinging
 wildly where the course has a sharp kink in it.
 
 Target pacing is calculated based on a flat pace and uphill/downhill pace penalty/bonus
-factor read from config.json and saved in segments.json
+factor read from config.json, and saved in segments.json.
 
-Also writes out/resource.json, the subset of segments.json that goes on the watch, in
-the shape the data field wants it. See make_resource().
+Also writes out/resource.json, the subset of that which goes on the watch, in the shape
+the data field wants it. See make_resource().
 
 """
 from pathlib import Path
@@ -55,13 +55,13 @@ HEADING_WINDOW = 50.0  # metres
 RESAMPLE_SPACING = 5.0  # metres
 
 
-def ms2s(pace_string):
-    # convert a string duration in minutes and seconds like "4:43" to seconds
+def parse_pace(pace_string):
+    # Convert a string duration in minutes and seconds like "4:43" to seconds
     m, s = [float(x) for x in pace_string.split(':')]
     return 60 * m + s
 
 
-def s2ms(pace):
+def format_pace(pace):
     # Format a duration in seconds in minutes and seconds as a string like "4:43"
     m, s = divmod(pace, 60)
     return f"{m:.0f}:{s:02.0f}"
@@ -195,9 +195,13 @@ def heading_at(s, lats, lons, target):
 
 
 def make_segments():
+    """Locate each waypoint on the track, pace its segment, and write segments.json.
+
+    Returns the segments, keyed by waypoint name and in course order.
+    """
     config = json.loads(CONFIG_FILE.read_text('utf8'))
     waypoints = config['waypoints']
-    flat_pace = ms2s(config["pacing"]["flat_pace"])
+    flat_pace = parse_pace(config["pacing"]["flat_pace"])
     uphill_penalty = config["pacing"]["uphill_penalty"]
     downhill_bonus = config["pacing"]["downhill_bonus"]
 
@@ -207,7 +211,6 @@ def make_segments():
     s, lats, lons = resample(points, distances)
 
     print(f"Track: {len(points)} points, {track_length / km:.3f} km")
-    # print(f"Gates: {GATE_LENGTH:.0f} m long, heading fitted over +/-{HEADING_WINDOW:.0f} m")
     print(f"Splits: {len(waypoints)} segments, {list(waypoints.values())[-1]:.3f} km")
     print()
 
@@ -246,7 +249,6 @@ def make_segments():
             "gate_right_lon": right_lon,
         }
 
-    
     print(
         f"{'segment endpoint':>20}  {'dist':>6}  {'len':>6}  {'grade'}  {'pace'}"
     )
@@ -254,20 +256,21 @@ def make_segments():
     for name, row in segments.items():
         print(
             f"{name:>20}  {row['distance'] / km:>6.3f}  {row['length'] / km:>6.3f}  "
-            f"{row['grade'] / percent:+.1f}%  {s2ms(row['pace'])}"
+            f"{row['grade'] / percent:+.1f}%  {format_pace(row['pace'])}"
         )
 
     print()
     total_time = sum(seg['pace'] * (seg['length'] / km) for seg in segments.values())
     avg_pace = total_time / (track_length / km)
 
-    print(f"       Total time: {s2ms(total_time)}")
-    print(f"     Average pace: {s2ms(avg_pace)}/km")
+    print(f"       Total time: {format_pace(total_time)}")
+    print(f"     Average pace: {format_pace(avg_pace)}/km")
     print(f"Difficulty factor: {avg_pace/flat_pace:.3f}")
 
     print()
     SEGMENTS_FILE.write_text(json.dumps(segments, indent=4), 'utf8')
     print(f"Wrote {SEGMENTS_FILE}")
+    return segments
 
 
 def semicircles(degrees):
@@ -275,8 +278,8 @@ def semicircles(degrees):
     return round(degrees * SEMICIRCLES_PER_DEGREE)
 
 
-def make_resource():
-    """Write out/resource.json, the part of segments.json that goes on the watch.
+def make_resource(segments):
+    """Write out/resource.json, the part of the segments that goes on the watch.
 
     The data field only needs what it draws or tests against: the segment names,
     their lengths, their target paces, and the gates. The rest of segments.json is
@@ -284,9 +287,9 @@ def make_resource():
     distance is the running sum of the lengths), and a data field's memory budget
     is small enough to bother leaving it behind.
 
-    Parallel arrays rather than segments.json's dict-of-dicts, for the same reason:
-    a Monkey C Dictionary costs per entry, and the nested form would put ten copies
-    of the same six key strings on the heap.
+    Parallel arrays rather than a dict per segment, for the same reason: a Monkey C
+    Dictionary costs per entry, and the nested form would put ten copies of the same
+    six key strings on the heap.
 
     Coordinates go out as integer semicircles rather than degrees. A JSON resource's
     numeric type is documented only as Numeric, and if the compiler makes a 32-bit
@@ -297,8 +300,6 @@ def make_resource():
     left as decimals: seconds per km needs about 5 significant digits, which is
     comfortably inside what a Float holds either way.
     """
-    segments = json.loads(SEGMENTS_FILE.read_text('utf8'))
-
     resource = {
         "names": list(segments),
         "lengths": [round(seg["length"]) for seg in segments.values()],
@@ -320,5 +321,4 @@ def make_resource():
 
 if __name__ == "__main__":
     OUT_DIR.mkdir(exist_ok=True)
-    make_segments()
-    make_resource()
+    make_resource(make_segments())

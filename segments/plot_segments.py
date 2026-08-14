@@ -1,8 +1,8 @@
 """Plot the course with the split gates overlaid, and its elevation profile.
 
-Reads the course track from the .gpx file and the processed waypoints from
-processed-waypoints.json (written by process_waypoints.py), and draws each gate as the
-line between the two endpoints given in the csv file.
+Reads the course track from the .gpx file and the waypoints from segments.json
+(written by make_segments.py), and draws each gate as the line between the two
+endpoints given there.
 
 The map is plotted in km east/north of the start line. The elevation profile is plotted
 against distance along the course, with the elevation as recorded in the .gpx file
@@ -10,7 +10,6 @@ alongside the straight line between each pair of waypoints, whose slope is the a
 grade of that segment - so the two can be compared by eye.
 """
 
-from pathlib import Path
 import json
 
 import numpy as np
@@ -21,15 +20,12 @@ from make_segments import (
     SEGMENTS_FILE,
     GATE_LENGTH,
     GPX_FILE,
+    km,
+    percent,
     cumulative_distances,
     offset,
     read_track,
 )
-
-km = 1000
-percent = 0.01
-
-THIS_DIR = Path(__file__).absolute().parent
 
 COURSE_PLOT_FILE = OUT_DIR / "course_gates.png"
 ELEVATION_PLOT_FILE = OUT_DIR / "course_elevation.png"
@@ -83,8 +79,9 @@ def plot_course():
 
         ax.plot(*zip(left, right), color="crimson", linewidth=2, zorder=3)
         ax.plot(east, north, marker="o", color="crimson", markersize=4, zorder=4)
-        # Alternate the labels above and below the course so they don't collide. Last
-        # point hard-coded to be above regardless
+        # Alternate the labels above and below the course so they don't collide. The
+        # finish takes an above label whichever side its turn falls on, since the
+        # course runs beneath it and a label there would sit on the track:
         above = i % 2 == 0 or i == len(segments) - 1
         ax.annotate(
             f"{name}\n{waypoint['distance'] / km} km",
@@ -94,7 +91,6 @@ def plot_course():
             ha="center",
             fontsize=LABEL_FONTSIZE,
             color="black",
-            # bbox=LABEL_BBOX,
             arrowprops=LABEL_ARROW,
         )
 
@@ -105,7 +101,6 @@ def plot_course():
     ax.margins(0.06)
     ax.set_xlabel("East of start (km)")
     ax.set_ylabel("North of start (km)")
-    # ax.set_title("Puffing Billy 13.5 km Classic")
     ax.grid(True, color="k", linestyle=":", alpha=0.5)
     ax.set_axisbelow(True)
     for spine in "top", "right":
@@ -196,7 +191,6 @@ def plot_elevation():
     ax.margins(x=0.01, y=0.04)
     ax.set_xlabel("Distance along course (km)")
     ax.set_ylabel("Elevation (m)")
-    # ax.set_title("Puffing Billy 13.5 km Classic - elevation profile")
     ax.grid(True, color="k", linestyle=":", alpha=0.5)
     ax.set_axisbelow(True)
     for spine in "top", "right":
