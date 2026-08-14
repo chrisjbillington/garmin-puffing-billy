@@ -641,7 +641,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var widest = dc.getTextWidthInPixels("0:00:00", _figureFont)
             + dc.getWidth() / 40
             + dc.getTextWidthInPixels("+00:00", _figureFont);
-        var named = dc.getTextWidthInPixels("at current effort", Graphics.FONT_XTINY);
+        var named = dc.getTextWidthInPixels("at current perf. ratio", Graphics.FONT_XTINY);
         if (named > widest) {
             widest = named;
         }
@@ -875,7 +875,7 @@ class PuffingBillyField extends WatchUi.DataField {
         fg as Number, labelColour as Number, dark as Boolean
     ) as Void {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        var labels = ["at target pace", "at current effort"];
+        var labels = ["at target pace", "at current perf. ratio"];
         var finishes = [targetFinishS(), effortFinishS()];
 
         for (var i = 0; i < 2; i += 1) {
