@@ -32,11 +32,13 @@ module Fmt {
     }
 
     //! Where a projection stands against the plan, as a signed m:ss. Negative
-    //! is time in hand.
+    //! is time in hand. The sign is read off the rounded figure, so the half
+    //! second either side of the plan reads as +0:00.
     function standing(offS as Float) as String {
-        var ahead = offS < 0.0;
-        var whole = ((ahead ? -offS : offS) + 0.5).toNumber();
-        return (ahead ? "-" : "+")
+        var magnitude = (offS < 0.0) ? -offS : offS;
+        var whole = (magnitude + 0.5).toNumber();
+        var sign = (offS < 0.0 && whole > 0) ? "-" : "+";
+        return sign
             + (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
     }
 }
