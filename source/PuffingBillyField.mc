@@ -1,5 +1,6 @@
 import Toybox.Activity;
 import Toybox.Application;
+import Toybox.Attention;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -384,12 +385,29 @@ class PuffingBillyField extends WatchUi.DataField {
         _allowedS = decay * _allowedS + ds / 1000.0 * _paces[_next];
     }
 
+    //! Announce a new segment with the watch's interval tone and a short,
+    //! distinctive double vibration. Guard both capabilities so the field can
+    //! still run if another supported product lacks either of them.
+    private function alertNewSegment() as Void {
+        if (Attention has :playTone) {
+            Attention.playTone(Attention.TONE_INTERVAL_ALERT);
+        }
+        if (Attention has :vibrate) {
+            Attention.vibrate([
+                new Attention.VibeProfile(100, 250),
+                new Attention.VibeProfile(0, 150),
+                new Attention.VibeProfile(100, 250)
+            ]);
+        }
+    }
+
     //! Move on to the next segment, taking the current odometer and timer
     //! readings as the boundary.
     private function advance() as Void {
         _segmentStartM = _distanceM;
         _segmentStartMs = _timerMs;
         _next += 1;
+        alertNewSegment();
     }
 
     //! Called once per second with fresh activity data. Do the computation
