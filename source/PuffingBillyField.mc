@@ -56,13 +56,19 @@ class PuffingBillyField extends WatchUi.DataField {
     //! gathered here to be tuned together. The pace columns are not among them
     //! — their spacing is measured against the face at draw time, in
     //! paceColumnOffset().
-    private const Y_REMAINING = 14;
-    private const Y_NAME = 27;
-    private const Y_BAR = 35;
-    private const Y_PACE_LABEL = 44;
-    private const Y_PACE_VALUE = 57;
-    private const Y_RULE = 70;
-    private const Y_HR = 83;
+    //!
+    //! Y_PACE_VALUE is the one row that is not placed by eye: it puts the ink
+    //! of the digits on the face's horizontal centre line, where the chord is
+    //! longest and so the columns stand furthest apart. The figures' line box
+    //! reaches lower than their ink, so that is a percent or so above where
+    //! centring the row itself would put it.
+    private const Y_HR = 17;
+    private const Y_RULE = 31;
+    private const Y_PACE_LABEL = 37;
+    private const Y_PACE_VALUE = 50;
+    private const Y_BAR = 65;
+    private const Y_NAME = 73;
+    private const Y_REMAINING = 86;
 
     //! The font every figure on the face is set in, as a height in pixels and a
     //! scalable face. Scalable because the system fonts step straight from
@@ -326,11 +332,12 @@ class PuffingBillyField extends WatchUi.DataField {
     //! stand as far apart as the face allows: the outer edge of an outer pace
     //! lands exactly on the circle SAFE_INSET leaves.
     //!
-    //! The row sits below the middle of the face, so it is its lowest ink that
-    //! comes nearest the bezel. paceString() only ever emits digits, a colon
-    //! and a dash, none of which descend, so that ink stops at the baseline
-    //! rather than at the bottom of the line box — worth the few pixels it
-    //! gives back, since the circle is closing fast by then.
+    //! Taken at the digits' baseline. paceString() only ever emits digits, a
+    //! colon and a dash, none of which descend, so the row's ink stops there
+    //! rather than at the bottom of the line box. Y_PACE_VALUE centres that ink
+    //! on the face, which leaves the top of the digits as far above the middle
+    //! as the baseline is below it, to within a pixel — so either edge answers
+    //! the same question.
     //!
     //! The labels are centred on the same columns and are the shorter row, so
     //! they follow the paces out without needing to be measured themselves.
@@ -512,19 +519,13 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
-        // The face is narrow this near the top, and this row is the widest of
-        // the three: the value runs to five characters once remainingM() goes
-        // negative on the approach to a gate, and "km" hangs off the end of it.
-        // That, rather than the rows below, is what holds its size down.
+        // Three digits and a short unit, high on the face where it is narrow:
+        // still the row with the most room to spare at the shared size.
+        var hr = _heartRate;
         drawValueUnit(
-            dc, w, h * Y_REMAINING / 100,
-            (remainingM() / 1000.0).format("%.2f"), _figureFont, fg,
-            "km", labelColour
-        );
-
-        dc.setColor(nameColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            w / 2, h * Y_NAME / 100, Graphics.FONT_TINY, _names[_next], centre
+            dc, w, h * Y_HR / 100,
+            (hr == null ? "---" : hr.format("%d")), _figureFont, fg,
+            "BPM", labelColour
         );
 
         // Three paces straddling the middle of the face, each label centred over
@@ -547,17 +548,24 @@ class PuffingBillyField extends WatchUi.DataField {
             );
         }
 
-        // Three digits and a short unit, low on the face where it is wide
-        // again: this row has room to spare at the shared size.
-        var hr = _heartRate;
-        drawValueUnit(
-            dc, w, h * Y_HR / 100,
-            (hr == null ? "---" : hr.format("%d")), _figureFont, fg,
-            "BPM", labelColour
+        dc.setColor(nameColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            w / 2, h * Y_NAME / 100, Graphics.FONT_TINY, _names[_next], centre
         );
 
-        // The offset clears the pace row's baseline rather than its line box:
-        // fonts here carry several pixels of descent that none of these strings
+        // The face is narrow this near the bottom, and this row is the widest of
+        // the three: the value runs to five characters once remainingM() goes
+        // negative on the approach to a gate, and "km" hangs off the end of it.
+        // That, rather than the rows above, is what holds its size down.
+        drawValueUnit(
+            dc, w, h * Y_REMAINING / 100,
+            (remainingM() / 1000.0).format("%.2f"), _figureFont, fg,
+            "km", labelColour
+        );
+
+        // Y_RULE sits midway between the heart rate's baseline and the top of
+        // the pace labels, rather than midway between the rows' centres: the
+        // figures carry several pixels of descent that none of these strings
         // actually use.
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(1);
