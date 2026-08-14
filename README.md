@@ -96,6 +96,9 @@ which look like this:
 }
 ```
 
+Note: the "Trestle Bridge" waypoint occurs roughly when the bridge comes into view, not
+at the bridge itself.
+
 The official course `.gpx` for 2026 is in this repo as
 `segments/official-course-2026.gpx`, and is used to extract segment grades. The default
 segmentation results in these segments:
