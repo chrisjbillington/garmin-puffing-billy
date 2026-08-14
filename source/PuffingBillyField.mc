@@ -78,10 +78,6 @@ class PuffingBillyField extends WatchUi.DataField {
     private const FIGURE_FONT_PX = 70;
     private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
 
-    //! The finished screen, which shares nothing with the rhythm above.
-    private const Y_FINAL_KM = 40;
-    private const Y_FINISHED = 75;
-
     //! Labels and rules, in a slate blue a few stops down from the foreground:
     //! enough contrast to read when looked at, little enough that the eye goes
     //! to the numbers rather than to what they are called. The upcoming
@@ -601,15 +597,15 @@ class PuffingBillyField extends WatchUi.DataField {
         var h = dc.getHeight();
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
 
+        // Past the last gate there is nothing left to pace, and the activity is
+        // about to be stopped, so the word is the whole screen. Centred the same
+        // way as the paces: on the ink, not on the line box.
         if (_next >= _lengths.size()) {
-            drawValueUnit(
-                dc, w, h * Y_FINAL_KM / 100,
-                (_distanceM / 1000.0).format("%.3f"), Graphics.FONT_NUMBER_MILD, fg,
-                "km", labelColour
-            );
+            var capMid = h / 2.0 + capHeight(_figureFont) / 2.0;
             dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                w / 2, h * Y_FINISHED / 100, Graphics.FONT_TINY, "finished", centre
+                w / 2, yForBaseline(capMid, _figureFont), _figureFont,
+                "Finished", centre
             );
             return;
         }
