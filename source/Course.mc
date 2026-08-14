@@ -9,6 +9,9 @@ import Toybox.Lang;
 //! pipeline.
 class Course {
 
+    //! Segment lengths are in metres, target paces per km.
+    private const M_PER_KM = 1000.0;
+
     //! 2**31 semicircles to 180 degrees. Gate coordinates are held as integer
     //! semicircles because Monkey C loads JSON reals as 32-bit Float, whose
     //! steps span 1.3 m of longitude at this course. Integers are exact, at
@@ -47,14 +50,14 @@ class Course {
         planS = 0.0;
         for (var i = 0; i < _lengths.size(); i += 1) {
             totalM += _lengths[i];
-            planS += _lengths[i] / 1000.0 * _paces[i];
+            planS += _lengths[i] / M_PER_KM * _paces[i];
         }
-        meanPaceS = planS / (totalM / 1000.0);
+        meanPaceS = planS / (totalM / M_PER_KM);
 
         _planAfter = [] as Array<Float>;
         var done = 0.0;
         for (var i = 0; i < _lengths.size(); i += 1) {
-            done += _lengths[i] / 1000.0 * _paces[i];
+            done += _lengths[i] / M_PER_KM * _paces[i];
             _planAfter.add(planS - done);
         }
     }

@@ -12,6 +12,9 @@ import Toybox.WatchUi;
 //! for instead, and how each stands against the plan.
 class PuffingBillyField extends WatchUi.DataField {
 
+    //! The distance to the next waypoint is held in metres and drawn in km.
+    private const M_PER_KM = 1000.0;
+
     //! Pace spread at which a segment's colour saturates, as a fraction of the
     //! course's average pace. The segment targets run from 19% faster than
     //! average to 24% slower, so 0.25 uses most of the ramp without clipping
@@ -334,7 +337,7 @@ class PuffingBillyField extends WatchUi.DataField {
         // of it. That, rather than the rows above, is what holds its size down.
         drawPair(
             dc, w, _layout.yRemaining,
-            (_race.remainingM() / 1000.0).format("%.2f"), _layout.figureFont, fg,
+            (_race.remainingM() / M_PER_KM).format("%.2f"), _layout.figureFont, fg,
             "km", Graphics.FONT_XTINY, labelColour
         );
 

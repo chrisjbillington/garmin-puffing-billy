@@ -7,6 +7,11 @@ import Toybox.Math;
 //! it, and how hard it is being run against the plan.
 class Race {
 
+    //! Distances are in metres and the activity timer in milliseconds, whereas
+    //! paces are per km and every projection is in seconds.
+    private const M_PER_KM = 1000.0;
+    private const MS_PER_S = 1000.0;
+
     //! How far past a gate the runner may get before we give up waiting for it
     //! and move on. Gates are only ever tested in order, so without this one
     //! missed gate — a long GPS dropout, a wide detour around the course —
@@ -103,7 +108,7 @@ class Race {
 
         // Equal totals, so the race opens reading its target rather than
         // whatever the first stride happened to measure.
-        var seeded = _course.paceS(0) * PACE_SEED_M / 1000.0;
+        var seeded = _course.paceS(0) * PACE_SEED_M / M_PER_KM;
         _takenS = seeded;
         _allowedS = seeded;
     }
@@ -131,7 +136,7 @@ class Race {
         }
         var decay = Math.pow(Math.E, -ds / PACE_WINDOW_M).toFloat();
         _takenS = decay * _takenS + dt;
-        _allowedS = decay * _allowedS + ds / 1000.0 * _course.paceS(_next);
+        _allowedS = decay * _allowedS + ds / M_PER_KM * _course.paceS(_next);
     }
 
     //! Announce a new segment with the watch's interval tone and a short,
@@ -177,7 +182,7 @@ class Race {
         // was run in. A second the watch has no reading for leaves both where
         // they are, and the step it belonged to is folded into the next one.
         if (t != null && d != null) {
-            accumulate(d - _distanceM, (t - _timerMs) / 1000.0);
+            accumulate(d - _distanceM, (t - _timerMs) / MS_PER_S);
             _distanceM = d;
             _timerMs = t;
         }
@@ -227,11 +232,11 @@ class Race {
     //! Average pace over the part of the current segment run so far, in seconds
     //! per km. Null until far enough into the segment to divide by.
     function segmentPaceS() as Float? {
-        var km = ranInSegmentM() / 1000.0;
+        var km = ranInSegmentM() / M_PER_KM;
         if (km <= 0.0) {
             return null;
         }
-        return ((_timerMs - _segmentStartMs) / 1000.0) / km;
+        return ((_timerMs - _segmentStartMs) / MS_PER_S) / km;
     }
 
     //! Instantaneous pace, in seconds per km.
@@ -240,13 +245,13 @@ class Race {
         if (speed == null || speed <= 0.0) {
             return null;
         }
-        return 1000.0 / speed;
+        return M_PER_KM / speed;
     }
 
     //! Plan time still to run, in seconds: what is left of the current segment
     //! at its own target pace, and every segment after it at theirs.
     private function planRemainingS() as Float {
-        return remainingM() / 1000.0 * _course.paceS(_next)
+        return remainingM() / M_PER_KM * _course.paceS(_next)
             + _course.planAfterS(_next);
     }
 
@@ -255,13 +260,13 @@ class Race {
     //! won or lost so far, since everything ahead is being counted at its
     //! target.
     function targetFinishS() as Float {
-        return _timerMs / 1000.0 + planRemainingS();
+        return _timerMs / MS_PER_S + planRemainingS();
     }
 
     //! The finish time the race is on for if the rest of it is run at the
     //! fraction of target pace the last PACE_WINDOW_M has been run at, applied
     //! to every segment still to come.
     function perfRatioFinishS() as Float {
-        return _timerMs / 1000.0 + _takenS / _allowedS * planRemainingS();
+        return _timerMs / MS_PER_S + _takenS / _allowedS * planRemainingS();
     }
 }
