@@ -259,12 +259,9 @@ class Race {
     }
 
     //! The finish time the race is on for if the rest of it is run at the
-    //! effort being held now: the fraction of target pace the last
-    //! PACE_WINDOW_M has been run at, applied to every segment still to come.
-    //! Each is stretched against its own target rather than against a flat
-    //! pace, so the climbs and descents ahead still count for what they are
-    //! worth.
-    function effortFinishS() as Float {
+    //! fraction of target pace the last PACE_WINDOW_M has been run at, applied
+    //! to every segment still to come.
+    function perfRatioFinishS() as Float {
         return _timerMs / 1000.0 + _takenS / _allowedS * planRemainingS();
     }
 }

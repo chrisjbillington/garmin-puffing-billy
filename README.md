@@ -48,10 +48,6 @@ Top to bottom:
   reaches -200 m before the next waypoint is reached, the field gives up waiting for the
   gate and moves on to the next segment anyway.
 
-Once the last waypoint has been crossed the whole face reads `Finished`. Resetting the
-activity puts the field back on the start line, so you can run it again without leaving
-the activity.
-
 ### Given half the face
 
 ![half screen](readme-images/half-screen.png)

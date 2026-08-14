@@ -9,11 +9,6 @@ import Toybox.Lang;
 //! Roboto measures.
 class Layout {
 
-    //! The share of the display a field must be given before it is drawn with
-    //! the race detail. Below that there is no room for seven rows, and the
-    //! projections are drawn in their place.
-    private const DETAIL_MIN_SHARE = 0.75;
-
     //! Where a pace label sits between the rule above it and the digits below,
     //! as the fraction D/C of the gap the rest of the top of the face is spaced
     //! by. At 1 the label is centred between the two; the lower it goes the
@@ -53,8 +48,7 @@ class Layout {
 
     private var _face as Face;
 
-    //! Whether the field has been given so little of the display that the
-    //! projections are drawn in place of the race detail.
+    //! Whether the field has been given a half-screen
     var half as Boolean;
 
     //! The figure font, at whichever size the field has the room for. Falls
@@ -113,7 +107,8 @@ class Layout {
     ) as Void {
         barPen = dc.getWidth() / BAR_PEN_DIV;
         pairGap = dc.getWidth() / PAIR_GAP_DIV;
-        half = dc.getHeight() < DETAIL_MIN_SHARE * _face.h;
+        // Treat as half screen if field is less than 75% of display height
+        half = dc.getHeight() < 0.75 * _face.h;
 
         figureFont = Graphics.FONT_LARGE;
         var scalable = Graphics.getVectorFont({

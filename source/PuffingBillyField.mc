@@ -252,24 +252,20 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawText(start + leftW + gap, y, rightFont, right, justify);
     }
 
-    //! Draw the half-height field: the two finish times the race is on for,
-    //! each under the name of the pace it assumes and beside where it stands
-    //! against the plan.
-    private function drawProjections(
+    //! Draw the half-height field: the two projected finish times, each
+    //! labelled with the name of the pace it assumes and with the time ahead
+    //! or behind of plan shown next to it
+    private function drawHalfScreenField(
         dc as Dc, w as Number,
         fg as Number, labelColour as Number, dark as Boolean
     ) as Void {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         var finishes =
-            [_race.targetFinishS(), _race.effortFinishS()] as Array<Float>;
+            [_race.targetFinishS(), _race.perfRatioFinishS()] as Array<Float>;
 
         for (var i = 0; i < finishes.size(); i += 1) {
             var finish = finishes[i];
 
-            // Both are measured against the same planned finish, so the two
-            // standings read against each other: one is the time the race has
-            // won or cost so far, the other where holding this effort carries
-            // that to by the line.
             var off = finish - _course.planS;
             var colour = (off < 0.0)
                 ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
@@ -290,9 +286,9 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawBitmap(w / 2 - _train.getWidth() / 2, _layout.yTrain, _train);
     }
 
-    //! Draw the race detail: the heart rate, the three paces, the course bar,
+    //! Draw the full-screen field: the heart rate, the three paces, the course bar,
     //! and the waypoint being run towards with the distance still to it.
-    private function drawDetail(
+    private function drawFullScreenField(
         dc as Dc, w as Number,
         fg as Number, labelColour as Number, nameColour as Number
     ) as Void {
@@ -378,12 +374,12 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
-        // Half the display has no room for the race detail, so it carries where
-        // the race is going instead.
+        // When the field is given half a data screen, we show projected finish times,
+        // otherwise we show pace, heart rate, and current segment info
         if (_layout.half) {
-            drawProjections(dc, w, fg, labelColour, dark);
+            drawHalfScreenField(dc, w, fg, labelColour, dark);
         } else {
-            drawDetail(dc, w, fg, labelColour, nameColour);
+            drawFullScreenField(dc, w, fg, labelColour, nameColour);
         }
     }
 }
