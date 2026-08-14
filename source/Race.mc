@@ -108,6 +108,16 @@ class Race {
         _allowedS = seeded;
     }
 
+    //! Whether the reading belongs to a later activity than the one this race
+    //! has been following. The activity timer only ever runs forward within one
+    //! activity, so a reading behind where the race has got to is the activity
+    //! having been reset — and a race is only ever run once, so what is wanted
+    //! then is a new one rather than this one wound back.
+    function wasReset(info as Activity.Info) as Boolean {
+        var t = info.timerTime;
+        return t != null && t < _timerMs;
+    }
+
     //! Fold one step of `ds` metres taken in `dt` seconds into the running
     //! totals, first decaying what is already there by the ground just covered.
     //!
@@ -159,19 +169,18 @@ class Race {
             return;
         }
 
-        var d = info.elapsedDistance;
-        var distanceM = (d == null) ? 0.0 : d;
-
         var t = info.timerTime;
-        var timerMs = (t == null) ? 0 : t;
+        var d = info.elapsedDistance;
 
         // Before the odometer and the clock are moved on, and before any gate
         // is crossed, so that the step just taken is charged to the segment it
-        // was run in.
-        accumulate(distanceM - _distanceM, (timerMs - _timerMs) / 1000.0);
-
-        _distanceM = distanceM;
-        _timerMs = timerMs;
+        // was run in. A second the watch has no reading for leaves both where
+        // they are, and the step it belonged to is folded into the next one.
+        if (t != null && d != null) {
+            accumulate(d - _distanceM, (t - _timerMs) / 1000.0);
+            _distanceM = d;
+            _timerMs = t;
+        }
 
         var crossedGate = false;
         var loc = info.currentLocation;
