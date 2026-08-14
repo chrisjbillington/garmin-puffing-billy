@@ -17,7 +17,13 @@ OUT := bin
 PRG := $(OUT)/$(NAME)-$(DEVICE).prg
 IQ  := $(OUT)/$(NAME).iq
 
-SOURCES := manifest.xml monkey.jungle \
+# The course data compiled into the app, and what it is built from. Every build
+# depends on this file, so an edit to config.json cannot be left out of a .prg.
+RESOURCE := segments/out/resource.json
+COURSE   := segments/make_segments.py segments/config.json \
+            segments/official-course-2026.gpx
+
+SOURCES := manifest.xml monkey.jungle $(RESOURCE) \
            $(shell find source resources -type f 2>/dev/null)
 
 MONKEYC := $(BIN)/monkeyc -f monkey.jungle -y $(KEY) -w -l $(TYPECHECK)
@@ -31,10 +37,14 @@ check:
 	@test -x "$(BIN)/monkeyc" || { echo "No monkeyc in $(BIN)"; exit 1; }
 	@test -f "$(KEY)"   || { echo "No developer key at $(KEY) (override with KEY=)"; exit 1; }
 
-segments:
+# make_segments.py writes segments.json alongside resource.json; the one named
+# here stands for both.
+$(RESOURCE): $(COURSE)
 	python segments/make_segments.py
 
-build: check segments $(PRG)
+segments: $(RESOURCE)
+
+build: check $(PRG)
 
 $(PRG): $(SOURCES) | $(OUT)
 	$(MONKEYC) -d $(DEVICE) -o $@
@@ -52,7 +62,7 @@ run: build
 	$(BIN)/monkeydo $(PRG) $(DEVICE)
 
 # Store-ready .iq bundle (all products in the manifest, signed).
-package: check | $(OUT)
+package: check $(RESOURCE) | $(OUT)
 	$(MONKEYC) -e -o $(IQ)
 
 # Sideload over MTP. Plug the watch in and let gvfs mount it first.
