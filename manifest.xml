@@ -9,6 +9,7 @@
         type="datafield">
         <iq:products>
             <iq:product id="venu441mm"/>
+            <iq:product id="fr165"/>
         </iq:products>
         <iq:permissions>
             <iq:uses-permission id="Positioning"/>

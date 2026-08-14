@@ -21,7 +21,9 @@ the field
 ---------
 
 What the field shows depends on how much of the display the activity's layout gives it.
-You can have
+
+You can include the full-screen version on one data screen and the half-screen version
+on another, to see both.
 
 ### Given the whole face
 
