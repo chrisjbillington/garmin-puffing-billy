@@ -35,7 +35,7 @@ class PuffingBillyField extends WatchUi.DataField {
 
     //! How much a segment's colour is knocked back for course not yet run.
     //! Integer, used as a divisor on each colour channel.
-    private const DIM = 3;
+    private const DIM = 2;
 
     //! Clearance kept from the edge of the screen. The watch shifts the whole
     //! display by a few pixels every so often to spare the panel from burn-in,
