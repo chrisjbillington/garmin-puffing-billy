@@ -59,6 +59,14 @@ class PuffingBillyField extends WatchUi.DataField {
     private const CAP_FRAC = 1456.0 / 2400.0;
     private const X_HEIGHT_FRAC = 1082.0 / 2400.0;
 
+    //! The narrowest blank a digit carries beside its ink, on the same scale.
+    //! Glyphs are spaced by their advance, which includes that blank, so a row
+    //! measured with getTextWidthInPixels() reads wider than what is drawn.
+    //! Taken as the smallest any digit has — 60 units, on a 4, against 115 on a
+    //! 0 — because a pace can begin or end on any of them, and it is the
+    //! tightest one that has to clear the margin.
+    private const DIGIT_BEARING_FRAC = 60.0 / 2400.0;
+
     //! Where a pace label sits between the rule above it and the digits below,
     //! as the fraction D/C of the gap the rest of the top of the face is spaced
     //! by. At 1 the label is centred between the two; the lower it goes the
@@ -423,8 +431,8 @@ class PuffingBillyField extends WatchUi.DataField {
     }
 
     //! How far either side of centre the outer pace columns sit, so that they
-    //! stand as far apart as the face allows: the outer edge of an outer pace
-    //! lands exactly on the circle SAFE_INSET leaves.
+    //! stand as far apart as the face allows: the ink of an outer pace lands on
+    //! the circle SAFE_INSET leaves.
     //!
     //! Taken at the digits' baseline. paceString() only ever emits digits, a
     //! colon and a dash, none of which descend, so the row's ink stops there
@@ -439,8 +447,10 @@ class PuffingBillyField extends WatchUi.DataField {
             - Graphics.getFontHeight(_figureFont) / 2
             + Graphics.getFontAscent(_figureFont);
         // Every digit in this face is one width, so any four-character pace is
-        // as wide as the row ever gets.
-        var half = dc.getTextWidthInPixels("0:00", _figureFont) / 2.0;
+        // as wide as the row ever gets — measured in advances, off which the
+        // ink stops short by a side bearing at each end.
+        var half = dc.getTextWidthInPixels("0:00", _figureFont) / 2.0
+            - Graphics.getFontHeight(_figureFont) * DIGIT_BEARING_FRAC;
         return safeHalfWidthAt(w, h, baseline) - half;
     }
 
