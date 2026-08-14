@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
 <drawables>
     <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
+    <bitmap
+        id="PuffingBillyTrain"
+        filename="puffing_billy_64x32.png"
+        dithering="none"/>
 </drawables>

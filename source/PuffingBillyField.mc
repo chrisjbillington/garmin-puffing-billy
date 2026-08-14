@@ -231,6 +231,11 @@ class PuffingBillyField extends WatchUi.DataField {
     //! face at the size asked for.
     private var _figureFont as FontType;
 
+    //! The train shown in the otherwise empty, tapered end of a half-height
+    //! field. It is imported without dithering in drawables.xml so its small,
+    //! deliberately limited palette stays crisp.
+    private var _train as Graphics.BitmapReference;
+
     //! The whole display, and where in it the field has been placed. A field
     //! given only part of the face sits off the middle of the circle, so it is
     //! the screen and this offset, not the field's own box, that say how much
@@ -258,6 +263,7 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _yProjLabel as Number;
     private var _yProjValue as Number;
     private var _yProjPitch as Number;
+    private var _yTrain as Number;
 
     function initialize() {
         DataField.initialize();
@@ -279,6 +285,9 @@ class PuffingBillyField extends WatchUi.DataField {
         _segmentStartMs = 0;
         _speedMps = null;
         _heartRate = null;
+        _train = Application.loadResource(
+            $.Rez.Drawables.PuffingBillyTrain
+        ) as Graphics.BitmapReference;
         // Equal totals, so the race opens reading its target rather than
         // whatever the first stride happened to measure.
         var seeded = _paces[0] * PACE_SEED_M / 1000.0;
@@ -304,6 +313,7 @@ class PuffingBillyField extends WatchUi.DataField {
         _yProjLabel = 0;
         _yProjValue = 0;
         _yProjPitch = 0;
+        _yTrain = 0;
 
         _courseM = 0.0;
         _planS = 0.0;
@@ -674,6 +684,16 @@ class PuffingBillyField extends WatchUi.DataField {
         );
         _yProjPitch =
             (nameUp + nameDown + inner + figCap + gap + 0.5).toNumber();
+
+        // Put the image as far towards the outer edge as the circular safe
+        // inset permits. The reach is measured at its top corners, not merely
+        // at its centre, so the whole rectangular bitmap clears the bezel.
+        var imageHalfW = _train.getWidth() / 2.0;
+        var imageHalfH = _train.getHeight() / 2.0;
+        var imageReach = reachFor(imageHalfW) - imageHalfH;
+        var imageCentre = _screenH / 2.0
+            + (down ? imageReach : -imageReach);
+        _yTrain = (imageCentre - imageHalfH - _offY + 0.5).toNumber();
     }
 
     //! Take the size and placing the watch has given the field, and lay it out
@@ -902,6 +922,8 @@ class PuffingBillyField extends WatchUi.DataField {
                 standingString(off), _figureFont, colour
             );
         }
+
+        dc.drawBitmap(w / 2 - _train.getWidth() / 2, _yTrain, _train);
     }
 
     //! Draw the field. `dc` is the whole round face, but it is sized off
