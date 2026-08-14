@@ -45,9 +45,12 @@ Top to bottom:
 - **Remaining segment distance** - how far is left to that waypoint, in km. It counts
   down, and can go negative if GPS distance (due to error or otherwise) in the segment
   grows larger than the expected segment length before reaching the next waypoint. If it
-  reaches -200 m before the next waypoint is reached, the 
+  reaches -200 m before the next waypoint is reached, the field gives up waiting for the
+  gate and moves on to the next segment anyway.
 
-Once the last waypoint has been crossed the whole face reads `Finished`.
+Once the last waypoint has been crossed the whole face reads `Finished`. Resetting the
+activity puts the field back on the start line, so you can run it again without leaving
+the activity.
 
 ### Given half the face
 
@@ -73,8 +76,8 @@ waypoint, which serve as "gates" - if you run across the line joining them, this
 triggers the data field to move to the next segment.
 
 
-The segments can be are configured in `segments/config.json`, the default contents of
-which look like this:
+`segments/config.json` is the only file you edit to change the course or the target
+pace. Its default contents look like this:
 
 ```json
 {
@@ -98,6 +101,15 @@ which look like this:
 }
 ```
 
+It holds:
+
+- `waypoints`: the segment endpoints, as a name mapped to its distance in km
+  into the course, in order. The last one is the finish.
+- `pacing.flat_pace`: target pace on flat ground, `"m:ss"` per km.
+- `pacing.uphill_penalty` and `pacing.downhill_bonus`: fractional slowdown and
+  speedup per unit of grade - equivalently, percent per percent - used to turn
+  each segment's average grade into its target pace.
+
 Note: the "Trestle Bridge" waypoint occurs roughly when the bridge comes into view, not
 at the bridge itself.
 
@@ -110,27 +122,7 @@ segmentation results in these segments:
 ![course gates](readme-images/course_gates.png)
 
 
-After editing `segments/config.json`, you can run `python segments/make_segments.py` to
-extract grades for the segments, calculate paces based on the `flat_pace`,
-`uphill_penalty` (percent pace increase per percent grade) and `downhill_bonus` (percent
-pace reduction per percent grade) in `config.json`, and you can run `python
-segments/plot_segments.py` to view the profile the segmentation implies.
-
-
-`make_segments.py` produces `segments/out/resource.json` which gets included in the
-compiled app and send to the watch.
-
-Going through the pipeline (which `make` will run if needed in any case):
-
-`segments/config.json` is the only file you edit to change the course or the
-target pace. It holds:
-
-- `waypoints`: the segment endpoints, as a name mapped to its distance in km
-  into the course, in order. The last one is the finish.
-- `pacing.flat_pace`: target pace on flat ground, `"m:ss"` per km.
-- `pacing.uphill_penalty` and `pacing.downhill_bonus`: fractional slowdown and
-  speedup per unit of grade, used to turn each segment's average grade into its
-  target pace.
+Going through the pipeline, which `make` runs for you whenever it is out of date:
 
 `make_segments.py` locates each waypoint along the `.gpx` track, fits the course
 heading there, and builds the 200 m "gate" normal to that heading which the
@@ -150,8 +142,9 @@ docstring explains why.
 `resource.json`, which is what makes it `$.Rez.JsonData.Segments` in the app.
 
 `segments/out/` is gitignored, so it isn't in a fresh clone. Nothing needs doing
-about that: `make build` depends on the `segments` target, which is phony and so
-regenerates both files on every build - an edit to `config.json` can't be left
+about that: the `.prg` depends on `resource.json`, which in turn depends on
+`config.json`, the `.gpx` and `make_segments.py`, so a build regenerates it
+whenever it is missing or out of date - an edit to `config.json` can't be left
 out of the `.prg`.
 
 `segments/plot_segments.py` has no make target; run it by hand after
@@ -161,6 +154,25 @@ profile, into `segments/out/*.png`:
 ```bash
 python segments/plot_segments.py
 ```
+
+source
+------
+
+One class or module per job, all under `source/`:
+
+- `PuffingBillyApp.mc` - the app shell, which returns the field as its only view.
+- `PuffingBillyField.mc` - the data field itself: the three callbacks, the colours and
+  all of the drawing.
+- `Course.mc` - the segments, their target paces and their gates, read from the
+  compiled-in JSON resource, plus the line-crossing test against a gate.
+- `Race.mc` - the race in progress: which segment is being run, how far and how long
+  into it, how hard it is being run against the plan, and the two projected finishes.
+- `Layout.mc` - the vertical rhythm, solved once per `onLayout()` and read on every
+  draw.
+- `Face.mc` - the round display, where the field has been placed on it, and the circle
+  left once the bezel clearance is taken off.
+- `Roboto.mc` - the glyph metrics the Graphics API doesn't report.
+- `Fmt.mc` - paces, durations and standings as strings.
 
 setup bits and bobs
 -------------------
@@ -203,8 +215,9 @@ make
 ```
 
 Regenerate the course data in `segments/out/` from `segments/config.json` and the
-`.gpx` track. `make` does this for you before every build, so you only need it on
-its own to see the pacing table it prints:
+`.gpx` track, without building. A build does this for you when it needs to, so
+you only need it on its own for the pacing table it prints, or before
+`plot_segments.py`:
 
 ```bash
 make segments
