@@ -50,25 +50,14 @@ class PuffingBillyField extends WatchUi.DataField {
     //! 390px that is a 10px bar.
     private const BAR_PEN_DIV = 39;
 
-    //! The vertical rhythm, as percentages of the face height. These are worth
-    //! only what they are against each other: the rows are placed by eye to sit
-    //! clear of one another rather than derived from anything, so they are
-    //! gathered here to be tuned together. The pace columns are not among them
-    //! — their spacing is measured against the face at draw time, in
-    //! paceColumnOffset().
-    //!
-    //! Y_PACE_VALUE is the one row that is not placed by eye: it puts the ink
-    //! of the digits on the face's horizontal centre line, where the chord is
-    //! longest and so the columns stand furthest apart. The figures' line box
-    //! reaches lower than their ink, so that is a percent or so above where
-    //! centring the row itself would put it.
-    private const Y_HR = 17;
-    private const Y_RULE = 31;
-    private const Y_PACE_LABEL = 37;
-    private const Y_PACE_VALUE = 50;
-    private const Y_BAR = 65;
-    private const Y_NAME = 73;
-    private const Y_REMAINING = 86;
+    //! Where a Roboto glyph stands in its line box, as fractions of the height
+    //! the font was asked for. Every font on this face is a Roboto — the system
+    //! text fonts and the scalable one alike — and they share these: in a line
+    //! of 2400 units, an ascent of 1900, a cap height of 1456 and an x-height of
+    //! 1082. Ascent comes from Graphics.getFontAscent(); the other two the API
+    //! does not report, so they are taken from the font itself.
+    private const CAP_FRAC = 1456.0 / 2400.0;
+    private const X_HEIGHT_FRAC = 1082.0 / 2400.0;
 
     //! The font every figure on the face is set in, as a height in pixels and a
     //! scalable face. Scalable because the system fonts step straight from
@@ -153,6 +142,16 @@ class PuffingBillyField extends WatchUi.DataField {
     //! cannot supply the face at the size asked for.
     private var _figureFont as FontType;
 
+    //! The vertical rhythm, in pixels down the face, solved in onLayout(). Each
+    //! is the y a row is drawn at, not the top of its ink.
+    private var _yHr as Number;
+    private var _yRule as Number;
+    private var _yPaceLabel as Number;
+    private var _yPaceValue as Number;
+    private var _yBar as Number;
+    private var _yName as Number;
+    private var _yRemaining as Number;
+
     function initialize() {
         DataField.initialize();
 
@@ -181,6 +180,15 @@ class PuffingBillyField extends WatchUi.DataField {
         if (scalable != null) {
             _figureFont = scalable;
         }
+
+        // Placed properly by onLayout(), which runs before the first onUpdate().
+        _yHr = 0;
+        _yRule = 0;
+        _yPaceLabel = 0;
+        _yPaceValue = 0;
+        _yBar = 0;
+        _yName = 0;
+        _yRemaining = 0;
 
         var planS = 0.0;
         _courseM = 0.0;
@@ -328,23 +336,101 @@ class PuffingBillyField extends WatchUi.DataField {
         return Math.sqrt(r * r - dy * dy).toFloat();
     }
 
+    //! The height of a capital, and of a lowercase letter with neither stem nor
+    //! descender, for a font asked for at a given height.
+    private function capHeight(font as FontType) as Float {
+        return Graphics.getFontHeight(font) * CAP_FRAC;
+    }
+
+    private function xHeight(font as FontType) as Float {
+        return Graphics.getFontHeight(font) * X_HEIGHT_FRAC;
+    }
+
+    //! The y a row must be drawn at for its baseline to fall on `baseline`.
+    //! TEXT_JUSTIFY_VCENTER centres the line box, which reaches further below
+    //! the baseline than anything drawn here actually goes.
+    private function yForBaseline(baseline as Float, font as FontType) as Number {
+        return (baseline + Graphics.getFontHeight(font) / 2.0
+                - Graphics.getFontAscent(font) + 0.5).toNumber();
+    }
+
+    //! Solve the vertical rhythm. The rows are not placed by eye: they are
+    //! measured between the ink of one row and the ink of the next, rather than
+    //! between line boxes, since the fonts carry descent that these strings —
+    //! figures, and names without descenders — never use.
+    //!
+    //! Reading down the face, the gaps are
+    //!
+    //!     A  top of the display to the top of the heart rate's digits
+    //!     B  heart rate baseline to the rule
+    //!     C  rule to the top of the pace labels' x-height
+    //!     D  pace label baseline to the top of the pace digits
+    //!     E  pace baseline to the top of the bar
+    //!     F  bottom of the bar to the cap height of the waypoint name
+    //!     G  name baseline to the top of the remaining-distance digits
+    //!     H  its baseline to the bottom of the display
+    //!
+    //! wanted as A = B = C = E and F = G = H, with D held at the labels' own
+    //! x-height and the pace digits centred on the face. That is seven
+    //! equations for the seven rows, and it falls out top down: centring places
+    //! the paces, D places the labels above them, the labels fix the one gap
+    //! the top group shares, that gap places the bar, and the bar in turn
+    //! places the two rows under it.
+    //!
+    //! The pace digits sit on the middle of the face because that is where the
+    //! chord is longest, which is what lets their columns stand furthest apart.
+    private function layOut(dc as Dc) as Void {
+        var h = dc.getHeight();
+        var pen = dc.getWidth() / BAR_PEN_DIV;
+
+        var figCap = capHeight(_figureFont);
+        var labelX = xHeight(Graphics.FONT_XTINY);
+        var nameCap = capHeight(Graphics.FONT_TINY);
+
+        var paceTop = h / 2.0 - figCap / 2.0;
+        var paceBase = h / 2.0 + figCap / 2.0;
+        _yPaceValue = yForBaseline(paceBase, _figureFont);
+
+        var labelBase = paceTop - labelX;
+        var labelTop = labelBase - labelX;
+        _yPaceLabel = yForBaseline(labelBase, Graphics.FONT_XTINY);
+
+        // A + B + C spans the display top to the labels, less the one row of
+        // digits standing in it, so each is a third of what is left.
+        var above = (labelTop - figCap) / 3.0;
+        _yRule = (labelTop - above + 0.5).toNumber();
+        _yHr = yForBaseline(labelTop - 2.0 * above, _figureFont);
+
+        // E closes the top group, and the bar hangs its own half width below.
+        _yBar = (paceBase + above + pen / 2.0 + 0.5).toNumber();
+
+        // F + G + H likewise, over the two rows of ink below the bar.
+        var barBottom = _yBar + pen / 2.0;
+        var below = (h - barBottom - nameCap - figCap) / 3.0;
+        _yName = yForBaseline(barBottom + below + nameCap, Graphics.FONT_TINY);
+        _yRemaining = yForBaseline(
+            barBottom + 2.0 * below + nameCap + figCap, _figureFont
+        );
+    }
+
+    function onLayout(dc as Dc) as Void {
+        layOut(dc);
+    }
+
     //! How far either side of centre the outer pace columns sit, so that they
     //! stand as far apart as the face allows: the outer edge of an outer pace
     //! lands exactly on the circle SAFE_INSET leaves.
     //!
     //! Taken at the digits' baseline. paceString() only ever emits digits, a
     //! colon and a dash, none of which descend, so the row's ink stops there
-    //! rather than at the bottom of the line box. Y_PACE_VALUE centres that ink
-    //! on the face, which leaves the top of the digits as far above the middle
-    //! as the baseline is below it, to within a pixel — so either edge answers
-    //! the same question.
+    //! rather than at the bottom of the line box. layOut() centres that ink on
+    //! the face, which leaves the top of the digits as far above the middle as
+    //! the baseline is below it — so either edge answers the same question.
     //!
     //! The labels are centred on the same columns and are the shorter row, so
     //! they follow the paces out without needing to be measured themselves.
     private function paceColumnOffset(dc as Dc, w as Number, h as Number) as Float {
-        // TEXT_JUSTIFY_VCENTER centres the line box on y, so the baseline is an
-        // ascent down from the top of it.
-        var baseline = h * Y_PACE_VALUE / 100
+        var baseline = _yPaceValue
             - Graphics.getFontHeight(_figureFont) / 2
             + Graphics.getFontAscent(_figureFont);
         // Every digit in this face is one width, so any four-character pace is
@@ -523,7 +609,7 @@ class PuffingBillyField extends WatchUi.DataField {
         // still the row with the most room to spare at the shared size.
         var hr = _heartRate;
         drawValueUnit(
-            dc, w, h * Y_HR / 100,
+            dc, w, _yHr,
             (hr == null ? "---" : hr.format("%d")), _figureFont, fg,
             "BPM", labelColour
         );
@@ -538,19 +624,18 @@ class PuffingBillyField extends WatchUi.DataField {
             var x = (w / 2 + (i - 1) * col).toNumber();
             dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                x, h * Y_PACE_LABEL / 100, Graphics.FONT_XTINY,
-                labels[i] as String, centre
+                x, _yPaceLabel, Graphics.FONT_XTINY, labels[i] as String, centre
             );
             dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
-                x, h * Y_PACE_VALUE / 100, _figureFont,
+                x, _yPaceValue, _figureFont,
                 paceString(paces[i] as Float?), centre
             );
         }
 
         dc.setColor(nameColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            w / 2, h * Y_NAME / 100, Graphics.FONT_TINY, _names[_next], centre
+            w / 2, _yName, Graphics.FONT_TINY, _names[_next], centre
         );
 
         // The face is narrow this near the bottom, and this row is the widest of
@@ -558,20 +643,16 @@ class PuffingBillyField extends WatchUi.DataField {
         // negative on the approach to a gate, and "km" hangs off the end of it.
         // That, rather than the rows above, is what holds its size down.
         drawValueUnit(
-            dc, w, h * Y_REMAINING / 100,
+            dc, w, _yRemaining,
             (remainingM() / 1000.0).format("%.2f"), _figureFont, fg,
             "km", labelColour
         );
 
-        // Y_RULE sits midway between the heart rate's baseline and the top of
-        // the pace labels, rather than midway between the rows' centres: the
-        // figures carry several pixels of descent that none of these strings
-        // actually use.
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(1);
-        drawRule(dc, w, h, h * Y_RULE / 100);
+        drawRule(dc, w, h, _yRule);
 
         // Last, because it leaves the pen width and colour where it likes.
-        drawBar(dc, w, h, h * Y_BAR / 100, fg);
+        drawBar(dc, w, h, _yBar, fg);
     }
 }
