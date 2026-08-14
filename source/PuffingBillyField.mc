@@ -41,6 +41,15 @@ class PuffingBillyField extends WatchUi.DataField {
     //! descent underfoot is what the projection is made from.
     private const PACE_WINDOW_M = 500.0;
 
+    //! How much running that average is seeded with before the race has fed it
+    //! anything, as a distance in metres taken to have been run exactly to
+    //! plan. Its whole job is to keep the divisor off zero, so it is set well
+    //! under what one second of running brings: a metre is a quarter of a
+    //! second of plan time against the second or so a sample carries, which
+    //! leaves four fifths of the opening reading to the opening stride and has
+    //! the seed down to a hundredth of it by 100 m.
+    private const PACE_SEED_M = 1.0;
+
     //! Pace spread at which a segment's colour saturates, as a fraction of the
     //! course's average pace. The segment targets run from 19% faster than
     //! average to 24% slower, so 0.25 uses most of the ramp without clipping
@@ -205,10 +214,12 @@ class PuffingBillyField extends WatchUi.DataField {
     //! a second covering little ground gives a large one and would carry the
     //! same weight as a second covering plenty.
     //!
-    //! Both start at a window's worth of the opening target pace. The ratio is
-    //! honest from its first sample but says almost nothing yet, and a race
-    //! whose first stride happened to measure short is not one on for a
-    //! fifty-minute finish.
+    //! Both start at PACE_SEED_M of the opening target pace, which puts them
+    //! beyond ever being asked to divide by zero — the decay only ever scales
+    //! them and every step only ever adds — and is spent by the first sample.
+    //! Each sample carries nothing but its own share of plan time, so the
+    //! opening reading is the opening stride and no more than it: noisy, and
+    //! honestly so.
     private var _takenS as Float;
     private var _allowedS as Float;
 
@@ -268,11 +279,9 @@ class PuffingBillyField extends WatchUi.DataField {
         _segmentStartMs = 0;
         _speedMps = null;
         _heartRate = null;
-        // Seeded as though the window before the start line had been run
-        // exactly to plan: equal totals, so the race opens on its target, and
-        // sized to what a full window holds, so the seed is worth one window of
-        // course and is down to a third of the reading a window into the race.
-        var seeded = _paces[0] * PACE_WINDOW_M / 1000.0;
+        // Equal totals, so the race opens reading its target rather than
+        // whatever the first stride happened to measure.
+        var seeded = _paces[0] * PACE_SEED_M / 1000.0;
         _takenS = seeded;
         _allowedS = seeded;
 
@@ -478,21 +487,13 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Each is stretched against its own target rather than against a flat
     //! pace, so the climbs and descents ahead still count for what they are
     //! worth.
-    //!
-    //! Null until some ground has been covered to read the effort off.
-    private function effortFinishS() as Float? {
-        if (_allowedS <= 0.0) {
-            return null;
-        }
+    private function effortFinishS() as Float {
         return _timerMs / 1000.0
             + _takenS / _allowedS * planRemainingS();
     }
 
     //! A duration in seconds as h:mm:ss, or m:ss under the hour.
-    private function timeString(s as Float?) as String {
-        if (s == null || s < 0.0) {
-            return "-:--:--";
-        }
+    private function timeString(s as Float) as String {
         var whole = (s + 0.5).toNumber();
         var seconds = (whole % 60).format("%02d");
         if (whole < 3600) {
@@ -878,21 +879,16 @@ class PuffingBillyField extends WatchUi.DataField {
         var finishes = [targetFinishS(), effortFinishS()];
 
         for (var i = 0; i < 2; i += 1) {
-            var finish = finishes[i] as Float?;
+            var finish = finishes[i] as Float;
 
             // Both are measured against the same planned finish, so the two
             // standings read against each other: one is the time the race has
             // won or cost so far, the other where holding this effort carries
             // that to by the line.
-            var standing = "-:--";
-            var colour = labelColour;
-            if (finish != null) {
-                var off = finish - _planS;
-                standing = standingString(off);
-                colour = (off < 0.0)
-                    ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
-                    : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
-            }
+            var off = finish - _planS;
+            var colour = (off < 0.0)
+                ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
+                : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
 
             var step = i * _yProjPitch;
             dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
@@ -903,7 +899,7 @@ class PuffingBillyField extends WatchUi.DataField {
             drawPair(
                 dc, w, _yProjValue + step, w / 40,
                 timeString(finish), _figureFont, fg,
-                standing, _figureFont, colour
+                standingString(off), _figureFont, colour
             );
         }
     }
