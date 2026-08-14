@@ -1,3 +1,68 @@
+the field
+---------
+
+A data field for the Puffing Billy Great Train Race: a 13.6 km run on a fixed
+course, split by named waypoints into segments, each with its own target pace
+worked out from its grade. What the field shows depends on how much of the
+display the activity's layout gives it.
+
+### Given the whole face
+
+![full screen](screenshots/full-screen.png)
+
+Top to bottom:
+
+- **Heart rate**, in bpm, with `---` until the watch has a reading.
+- **target** - the current segment's target pace, in minutes per km. Fixed for
+  the segment, and grade-adjusted, so it steps up on the climbs and down on the
+  descents.
+- **segment** - average pace over the part of the current segment run so far,
+  measured from the last waypoint rather than from the start, so it says how
+  this segment is going against the target beside it.
+- **pace** - instantaneous pace, from the watch's current speed. Any of the
+  three reads `-:--` when there's no sensible number to show.
+- **The bar** - the whole course, start at the left and finish at the right,
+  one block per segment sized by its length and coloured by its target pace
+  against the course average: green where the plan is fast, red where it's
+  slow, amber in between. So it's the shape of the course at a glance - the
+  green stretches are the descents, the red ones the climbs. Course still to
+  run is dimmed and course already run is at full strength, and the marker is
+  the current position.
+- **The name in blue** - the waypoint being run towards, i.e. the end of the
+  current segment.
+- **The distance** - how far is left to that waypoint, in km. It counts down,
+  and dips a little below zero on the approach if the odometer gets there
+  before the gate does.
+
+Once the last waypoint has been crossed the whole face reads `Finished`.
+
+### Given half the face
+
+![half screen](screenshots/half-screen.png)
+
+There's no room for any of the above, so it shows where the race is heading
+instead: two projected finish times, each with how it stands against the
+planned finish - green and negative for time in hand, red and positive for time
+lost.
+
+- **at target pace** - the finish time if everything still to come is run at
+  its target pace. Its standing is therefore just the time won or lost so far.
+- **at current perf. ratio** - the finish time if the rest of the race is run
+  at the effort being held now: the fraction of target pace the last 500 m has
+  been run at, applied to every segment still ahead, each stretched against its
+  own target so the climbs and descents to come still count for what they are.
+
+The two are measured against the same planned finish, so the standings read
+against each other: what the race has cost so far, and where holding this
+effort carries that to by the line.
+
+The screenshot is one activity layout with two data fields on it, both of them
+this one - which is what the train is for. Half a round face is a band with one
+end tapering into the bezel, and there is no width to use down there, so the
+figures are built out from the end nearer the middle of the face and the train
+fills what's left.
+
+
 setup
 -----
 
