@@ -90,9 +90,6 @@ class PuffingBillyField extends WatchUi.DataField {
     //! here, not in onUpdate() — onUpdate() is called on the device's own
     //! schedule, which on an AMOLED watch drops right off in low-power mode.
     function compute(info as Activity.Info) as Void {
-        // Asked before the race is given the reading, and whatever state it is
-        // in: one left sitting on its finish would otherwise never look at the
-        // data again, and so never notice it had been put back on the line.
         if (_race.wasReset(info)) {
             _race = new Race(_course);
         }

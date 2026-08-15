@@ -130,8 +130,7 @@ class Race {
     //! Whether the reading belongs to a later activity than the one this race
     //! has been following. The activity timer only ever runs forward within one
     //! activity, so a reading behind where the race has got to is the activity
-    //! having been reset — and a race is only ever run once, so what is wanted
-    //! then is a new one rather than this one wound back.
+    //! having been reset
     function wasReset(info as Activity.Info) as Boolean {
         var t = info.timerTime;
         return t != null && t < _timerMs;
