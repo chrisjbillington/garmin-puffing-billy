@@ -63,16 +63,19 @@ depends on which half of the display the field has been given:
 So put the field on both halves of one data screen to see both, as in the screenshot.
 
 
-course data
------------
+Segment and pacing configuration
+--------------------------------
 
 The watch doesn't store the whole course, only pairs of GPS points straddling each
 waypoint, which serve as "gates" - if you run across the line joining them, this
 triggers the data field to move to the next segment.
 
+It also stores a target pace for each segment, which you can specify manually or have
+them computed from an equivalent flat-terrain target pace, grade penalty/bonus, and
+desired split delta (i.e. positive or negative splits).
 
 `segments/config.json` is the only file you edit to change the course or the target
-pace. Its default contents look like this:
+pacing. Its default contents look like this:
 
 ```json
 {
@@ -90,6 +93,7 @@ pace. Its default contents look like this:
     },
     "pacing": {
         "flat_pace": "4:45",
+        "split_delta": -0.01,
         "uphill_penalty": 5,
         "downhill_bonus": 1.75
     }
@@ -98,31 +102,83 @@ pace. Its default contents look like this:
 
 It holds:
 
-- `waypoints`: the segment endpoints, as a name mapped to its distance in km
-  into the course, in order. The last one is the finish.
-- `pacing.flat_pace`: target pace on flat ground, `"m:ss"` per km.
-- `pacing.uphill_penalty` and `pacing.downhill_bonus`: fractional slowdown and
-  speedup per unit of grade - equivalently, percent per percent - used to turn
-  each segment's average grade into its target pace.
+- `"waypoints"`: the segment endpoints, in order, as a list of names mapped to the
+  distance in km into the course, at which the waypoint occurs. The last one is the
+  finish.
+
+- `"pacing"`: either a list of per-segment paces, or parameters from which those paces
+  will be generated programmatically. If a list of per-segment paces, it should be the
+  same length as the list of waypoints, and contain paces as strings in minutes and
+  seconds per kilometer, for the segment ending at the corresponding waypoint, e.g.:
+
+  ```json
+      "pacing": [
+          "4:27",
+          "5:50",
+          "4:46",
+          "4:33",
+          "6:12",
+          "5:16",
+          "4:03",
+          "4:44",
+          "5:30",
+          "4:34"
+      ]
+    ```
+
+  Otherwise, `"pacing"` should contain the following parameters as in the default
+  example above:
+
+  ```json
+      "pacing": {
+        "flat_pace": "4:45",
+        "split_delta": -0.01,
+        "uphill_penalty": 5,
+        "downhill_bonus": 1.75
+    }
+    ```
+
+  - `"flat_pace"` the target average pace at which you would run the course if it were
+    flat, as a string in minutes and seconds per km, eg. `"4:45"`
+
+  - `"split_delta"`: the target fractional difference in pace of the second half of the
+    course with respect to the first, describing a linear ramp in pace at which you
+    would run the course if it were flat. e.g. `-0.01` means you would run the second
+    half of a flat course 1% faster than the first (what is typically meant by "1%
+    negative splits").
+
+  - `"uphill_penalty"` and `"downhill_bonus"`: the fractional slowdown and speedup, from
+    flat pace, per unit of average grade (equivalently, percent change in pace per
+    percent grade) to apply to each segment.
+
+  Note that this doesn't involve specifying your actual target race time - this goes the
+  other way around and calculates your target race time. You can see the result by
+  running `python segments/make_segments.py`, which will print a table of paces and the
+  resulting total time.
 
 The official course `.gpx` for 2026 is in this repo as
 `segments/official-course-2026.gpx`, and is used to extract segment grades. The default
-segmentation results in these segments:
+segmentation results in the below segments:
 
 ![course elevation](readme-images/course_elevation.png)
 
 ![course gates](readme-images/course_gates.png)
 
+If you change the waypoints, you will want to verify that the waypoint gates (red line
+segments in the image above) don't intersect the course at any point earlier than the
+waypoint itself, otherwise they'll be triggered early.
 
 Going through the pipeline, which `make` runs for you whenever it is out of date:
 
 `make_segments.py` locates each waypoint along the `.gpx` track, fits the course
 heading there, and builds the 200 m "gate" normal to that heading which the
 runner passes through - see the waypoint crossing section below. It also
-computes each segment's average grade from the track elevation and grade-adjusts
-the flat pace to get a per-segment target pace. All of that lands in
-`segments.json`, along with the working (heading, elevation, coordinates), and it
-prints a per-segment pacing table plus the predicted total time.
+computes each segment's average grade from the track elevation, and, unless the
+paces are given per segment, grade-adjusts the flat pace the split delta calls
+for at that point in the course to get the segment's target pace. All of that
+lands in `segments.json`, along with the working (heading, elevation,
+coordinates), and it prints a per-segment pacing table plus the predicted total
+time.
 
 `resource.json` is the part of that the data field actually needs - names,
 lengths, paces and gates - as parallel arrays, with coordinates in integer

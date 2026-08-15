@@ -14,8 +14,9 @@ metres of the waypoint. Fitting a curve over a window rather than taking the
 bearing between the two adjacent track points keeps the heading from swinging
 wildly where the course has a sharp kink in it.
 
-Target pacing is calculated based on a flat pace and uphill/downhill pace penalty/bonus
-factor read from config.json, and saved in segments.json.
+Target pacing is either given per segment in config.json, or calculated from a flat
+pace, a split delta and uphill/downhill pace penalty/bonus factors read from
+config.json. Either way it is saved in segments.json.
 
 Also writes out/resource.json, the subset of that which goes on the watch, in the shape
 the data field wants it. See make_resource().
@@ -75,6 +76,47 @@ def grade2pace(grade, flat_pace, uphill_penalty, downhill_bonus):
     else:
         k = downhill_bonus
     return flat_pace * (1 + k * grade)
+
+
+def split2pace(distance, course_length, flat_pace, split_delta):
+    """Flat pace the given distance in metres into a course of the given length.
+
+    Pace ramps linearly with distance from flat_pace * (1 - split_delta) at the start to
+    flat_pace * (1 + split_delta) at the finish, so that it averages flat_pace over the
+    course. split_delta is the difference between the times for the second and first
+    halves of the course, as a fraction of the mean half time:
+
+        split_delta = (t2 - t1) / (T / 2)
+
+    with the halves taken by distance and T the total time. So split_delta = -0.02 is a
+    2% negative split in the usual sense: t1 / t2 = 1.0202, the first half run 2% slower
+    than the second, and swapping the halves flips the sign and nothing else.
+
+    Since pace is linear in distance, a segment's mean pace is its pace at its midpoint,
+    so pass a segment's midpoint to pace that segment.
+    """
+    return flat_pace * (1 + 2 * split_delta * (distance / course_length - 0.5))
+
+
+def segment_pace(pacing, index, midpoint, course_length, grade):
+    """Target pace in seconds per km for one segment, from config.json's "pacing".
+
+    That is either a list of "m:ss" paces, one per segment, which are used as they
+    stand, or the parameters to calculate a pace from: the flat pace the split delta
+    calls for at `midpoint`, the middle of the segment in metres into the course,
+    adjusted for the segment's average `grade`.
+    """
+    if isinstance(pacing, list):
+        return parse_pace(pacing[index])
+    flat_pace = split2pace(
+        midpoint,
+        course_length,
+        parse_pace(pacing["flat_pace"]),
+        pacing["split_delta"],
+    )
+    return grade2pace(
+        grade, flat_pace, pacing["uphill_penalty"], pacing["downhill_bonus"]
+    )
 
 
 def read_track(gpx_file):
@@ -201,9 +243,13 @@ def make_segments():
     """
     config = json.loads(CONFIG_FILE.read_text('utf8'))
     waypoints = config['waypoints']
-    flat_pace = parse_pace(config["pacing"]["flat_pace"])
-    uphill_penalty = config["pacing"]["uphill_penalty"]
-    downhill_bonus = config["pacing"]["downhill_bonus"]
+    pacing = config['pacing']
+    course_length = list(waypoints.values())[-1] * km
+
+    if isinstance(pacing, list) and len(pacing) != len(waypoints):
+        raise ValueError(
+            f"config.json gives {len(pacing)} paces for {len(waypoints)} segments"
+        )
 
     points = read_track(GPX_FILE)
     distances = cumulative_distances(points)
@@ -217,7 +263,7 @@ def make_segments():
     segments = {}
     distance_prev = 0
     _, _, ele_prev = position_at(points, distances, 0)
-    for name, distance_km in waypoints.items():
+    for i, (name, distance_km) in enumerate(waypoints.items()):
         distance = distance_km * km
         length = distance - distance_prev
         distance_prev = distance
@@ -233,7 +279,7 @@ def make_segments():
         (left_lat, left_lon), (right_lat, right_lon) = gate_ends(lat, lon, heading)
         grade = (ele - ele_prev) / length
         ele_prev = ele
-        pace = grade2pace(grade, flat_pace, uphill_penalty, downhill_bonus)
+        pace = segment_pace(pacing, i, distance - length / 2, course_length, grade)
         segments[name] = {
             "distance": distance,
             "length": length,
@@ -265,7 +311,9 @@ def make_segments():
 
     print(f"       Total time: {format_pace(total_time)}")
     print(f"     Average pace: {format_pace(avg_pace)}/km")
-    print(f"Difficulty factor: {avg_pace/flat_pace:.3f}")
+    if not isinstance(pacing, list):
+        flat_pace = parse_pace(pacing["flat_pace"])
+        print(f"Difficulty factor: {avg_pace/flat_pace:.3f}")
 
     print()
     SEGMENTS_FILE.write_text(json.dumps(segments, indent=4), 'utf8')

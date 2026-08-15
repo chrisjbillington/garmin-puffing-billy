@@ -13,6 +13,7 @@
     },
     "pacing": {
         "flat_pace": "4:45",
+        "split_delta": -0.01,
         "uphill_penalty": 5,
         "downhill_bonus": 1.75
     }
