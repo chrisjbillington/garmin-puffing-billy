@@ -69,6 +69,12 @@ class PuffingBillyField extends WatchUi.DataField {
     //! small, deliberately limited palette stays crisp.
     private var _train as Graphics.BitmapReference;
 
+    //! Dimensions and obscurity flags used to identify which part of the screen the
+    //! field was assigned. Initialised to -1 and set on call to onUpdate().
+    private var _laidOutW as Number;
+    private var _laidOutH as Number;
+    private var _laidOutObscurity as Number;
+
     function initialize() {
         DataField.initialize();
 
@@ -84,6 +90,10 @@ class PuffingBillyField extends WatchUi.DataField {
         _train = Application.loadResource(
             $.Rez.Drawables.PuffingBillyTrain
         ) as Graphics.BitmapReference;
+
+        _laidOutW = -1;
+        _laidOutH = -1;
+        _laidOutObscurity = -1;
     }
 
     //! Called once per second with fresh activity data. Do the computation
@@ -96,12 +106,22 @@ class PuffingBillyField extends WatchUi.DataField {
         _race.update(info);
     }
 
-    //! Take the size and placing the watch has given the field, and lay it out
-    //! to suit. Placing comes from the obscurity flags, which name the edges of
-    //! the display the field is up against.
-    function onLayout(dc as Dc) as Void {
+    //! Lay out the field based on what screen region it has been assigned, and cache
+    //! the result, recomputing only if the screen region's dimensions or obscurity
+    //! flags change. This may only be called during during onUpdate(), since
+    //! getObscurityFlags() must only be called from onUpdate().
+    private function ensureLayout(dc as Dc) as Void {
+        var w = dc.getWidth();
         var h = dc.getHeight();
         var obscurity = getObscurityFlags();
+        if (w == _laidOutW && h == _laidOutH &&
+            obscurity == _laidOutObscurity) {
+            return;
+        }
+        _laidOutW = w;
+        _laidOutH = h;
+        _laidOutObscurity = obscurity;
+
         var top = (_face.h - h) / 2;
         if ((obscurity & DataField.OBSCURE_TOP) != 0) {
             top = 0;
@@ -353,6 +373,8 @@ class PuffingBillyField extends WatchUi.DataField {
 
     //! Draw the field, into whichever part of the display it has been given.
     function onUpdate(dc as Dc) as Void {
+        ensureLayout(dc);
+
         var bg = getBackgroundColor();
         var dark = (bg == Graphics.COLOR_BLACK);
         var fg = dark ? Graphics.COLOR_WHITE : Graphics.COLOR_BLACK;
