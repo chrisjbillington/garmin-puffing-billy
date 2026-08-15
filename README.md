@@ -20,14 +20,15 @@ is substantially vibe-coded and not intended to be general.
 the field
 ---------
 
+![full screen](readme-images/screenshot.png)
+
 What the field shows depends on how much of the display the activity's layout gives it.
 
-You can include the full-screen version on one data screen and the half-screen version
-on another, to see both.
+It has a full-screen version, and two half-screen versions (top and bottom half). You
+can include the full-screen version on one data screen and both half-screen versions on
+another, to see everything.
 
 ### Given the whole face
-
-![full screen](readme-images/full-screen.png)
 
 Top to bottom:
 
@@ -50,18 +51,16 @@ Top to bottom:
 
 ### Given half the face
 
-![half screen](readme-images/half-screen.png)
+One projected finish time, with how it stands against the planned finish - green and
+negative for time in hand, red and positive for time lost. Which projection you get
+depends on which half of the display the field has been given:
 
-Two projected finish times, each with how it stands against the planned finish - green
-and negative for time in hand, red and positive for time lost.
+- **at target pace** (top half) - the finish time if everything still to come is run at
+  its target pace.
+- **at current perf. ratio** (bottom half) - the finish time if the rest of the race is
+  run at the same fraction of target pace as an average over the last 500 m
 
-- **at target pace** - the finish time if everything still to come is run at its target
-  pace.
-- **at current perf. ratio** - the finish time if the rest of the race is run at the
-  same fraction of target pace as an average over the last 500 m
-
-The screenshot is one activity layout with two data fields on it, both of them this one
-- showing what it looks like in either the top or bottom half.
+So put the field on both halves of one data screen to see both, as in the screenshot.
 
 
 course data

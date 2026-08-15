@@ -36,15 +36,15 @@ class Layout {
     private const FIGURE_FONT_PX = 70;
     private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
 
-    //! The same face at the size half the display can carry, which is a good
-    //! deal less than the whole one. A finish time and its standing share a
-    //! line, and two of those have to stack inside a band whose far end tapers
-    //! away into the bezel — so the size pays twice over, once in the width
-    //! that pushes the line in towards the middle of the face and again in the
-    //! depth it takes out of the stack. At 48px both lines clear the inset with
-    //! a standing run out to two digits of minutes, and the figures still hang
-    //! clear of the tails of the name over them.
-    private const FIGURE_FONT_HALF_PX = 48;
+    //! The same face at the size half the display can carry, which is a little
+    //! less than the whole one. A finish time and its standing share a line,
+    //! inside a band whose far end tapers away into the bezel — so the size
+    //! pays twice over, once in the width that pushes the line in towards the
+    //! middle of the face and again in the depth it takes out of the band. At
+    //! 60px the line clears the inset with a standing run out to two digits of
+    //! minutes, and what is left over spaces the label above it to the same
+    //! rhythm the whole face is set to.
+    private const FIGURE_FONT_HALF_PX = 60;
 
     private var _face as Face;
 
@@ -73,10 +73,11 @@ class Layout {
     var yName as Number;
     var yRemaining as Number;
 
-    //! The rows of the half-height field: for each projection, the line naming
-    //! it and the line of figures under that.
-    var yProjLabel as Array<Number>;
-    var yProjValue as Array<Number>;
+    //! The rows of the half-height field: the line naming its projection, the
+    //! line of figures under that, and the train that fills the rest of the
+    //! band on a field given the top half of the display.
+    var yProjLabel as Number;
+    var yProjValue as Number;
     var yTrain as Number;
 
     function initialize(face as Face) {
@@ -94,8 +95,8 @@ class Layout {
         yBar = 0;
         yName = 0;
         yRemaining = 0;
-        yProjLabel = [0, 0] as Array<Number>;
-        yProjValue = [0, 0] as Array<Number>;
+        yProjLabel = 0;
+        yProjValue = 0;
         yTrain = 0;
     }
 
@@ -230,17 +231,19 @@ class Layout {
         paceColumn = paceColumnOffset(dc, paceBase);
     }
 
-    //! Solve the vertical rhythm of the half-height field: two blocks, each a
-    //! line naming a projection over the finish time it is heading for and the
-    //! standing beside it, with the label nearer its own figures than the block
-    //! above by the same LABEL_GAP_RATIO the whole face is spaced by.
+    //! Solve the vertical rhythm of the half-height field: a line naming a
+    //! projection over the finish time it is heading for and the standing
+    //! beside it, the label sitting closer to its own figures than the pair of
+    //! them do to the middle of the face by the same LABEL_GAP_RATIO the whole
+    //! face is spaced by.
     //!
-    //! Both blocks are built out from whichever end of the band is nearer the
+    //! The block is built out from whichever end of the band is nearer the
     //! middle of the face, since that is the end with width in it; the other
-    //! tapers into the bezel and is left empty. How far they may run is set by
-    //! the widest of the four rows, and the block is spaced to reach exactly
-    //! that far — so the same solve gives the same layout whether the field has
-    //! been put above the middle of the face or below it.
+    //! tapers into the bezel. How far it may run is set by the widest of its
+    //! rows, and it is spaced to reach exactly that far — so a field given the
+    //! top half of the display and one given the bottom half come out as mirror
+    //! images, and the two read as a pair when both are on one screen. Both
+    //! labels are measured whichever one this half draws, to the same end.
     private function solveHalf(
         dc as Dc, labels as Array<String>, train as Graphics.BitmapReference
     ) as Void {
@@ -249,8 +252,8 @@ class Layout {
         var labelDown = Roboto.inkDown(Graphics.FONT_XTINY);
         var figCap = Roboto.capHeight(figureFont);
 
-        // The figure lines are the wide ones, measured on the longest they get:
-        // a finish over the hour, and a standing run out to two digits of
+        // The figure line is the wide one, measured on the longest it gets: a
+        // finish over the hour, and a standing run out to two digits of
         // minutes. The labels are shorter than that but are checked anyway,
         // since it is the figure size rather than they that is tuned.
         var widest = dc.getTextWidthInPixels("0:00:00", figureFont)
@@ -266,17 +269,17 @@ class Layout {
         var span = _face.reachFor(widest / 2.0) - _face.nearEdge();
         if (span > h) { span = h.toFloat(); }
 
-        // Four rows of ink: a label at the ratio above its own figures, a full
-        // gap between the blocks, and a full gap at the near end of the band.
-        // The far end is simply where the block stops, so the whole thing
-        // mirrors about the near end whichever way up the field has been put.
+        // Two rows of ink: a label at the ratio above its own figures, and a
+        // full gap at the near end of the band. The far end is simply where the
+        // block stops, so the whole thing mirrors about the near end whichever
+        // way up the field has been put.
         var lower = _face.belowCentre();
         var r = LABEL_GAP_RATIO;
-        var up = [labelUp, figCap, labelUp, figCap] as Array<Float>;
-        var down = [labelDown, 0.0, labelDown, 0.0] as Array<Float>;
+        var up = [labelUp, figCap] as Array<Float>;
+        var down = [labelDown, 0.0] as Array<Float>;
         var gaps = lower
-            ? ([1.0, r, 1.0, r, 0.0] as Array<Float>)
-            : ([0.0, r, 1.0, r, 1.0] as Array<Float>);
+            ? ([1.0, r, 0.0] as Array<Float>)
+            : ([0.0, r, 1.0] as Array<Float>);
 
         // A band too shallow for its own ink is filled from the near end and
         // allowed to run off the far one, where there was no width to draw in
@@ -286,23 +289,20 @@ class Layout {
 
         var gap = unitGap(span, up, down, gaps);
         var rows = stack(lower ? 0.0 : h - span, gap, up, down, gaps);
-        yProjLabel = [
-            Roboto.yForBaseline(rows[0], Graphics.FONT_XTINY),
-            Roboto.yForBaseline(rows[2], Graphics.FONT_XTINY)
-        ] as Array<Number>;
-        yProjValue = [
-            Roboto.yForBaseline(rows[1], figureFont),
-            Roboto.yForBaseline(rows[3], figureFont)
-        ] as Array<Number>;
+        yProjLabel = Roboto.yForBaseline(rows[0], Graphics.FONT_XTINY);
+        yProjValue = Roboto.yForBaseline(rows[1], figureFont);
 
-        // Put the image as far towards the outer edge as the circular safe
-        // inset permits. The reach is measured at its top corners, not merely
-        // at its centre, so the whole rectangular bitmap clears the bezel.
+        // The train rides in the middle of what the block leaves at the top of
+        // the band, held far enough down the face for the circular safe inset
+        // to clear it. That reach is measured at its top corners, not merely at
+        // its centre, so the whole rectangular bitmap stays off the bezel.
         var imageHalfW = train.getWidth() / 2.0;
         var imageHalfH = train.getHeight() / 2.0;
         var imageReach = _face.reachFor(imageHalfW) - imageHalfH;
-        var imageCentre = _face.h / 2.0 + (lower ? imageReach : -imageReach);
-        yTrain = (imageCentre - imageHalfH - _face.offY + 0.5).toNumber();
+        var imageCentre = _face.h / 2.0 - imageReach - _face.offY;
+        var freeCentre = (h - span) / 2.0;
+        if (freeCentre > imageCentre) { imageCentre = freeCentre; }
+        yTrain = (imageCentre - imageHalfH + 0.5).toNumber();
     }
 
     //! How far either side of centre the outer pace columns sit, so that they

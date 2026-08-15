@@ -8,8 +8,10 @@ import Toybox.WatchUi;
 //! waypoints. Given the whole face it shows how far is left to the next
 //! waypoint, how the segment is being run against its target pace, and a bar
 //! giving the shape of the whole course at a glance. Given half the face there
-//! is no room for any of that, so it shows the two finish times the race is on
-//! for instead, and how each stands against the plan.
+//! is no room for any of that, so it shows one of the finish times the race is
+//! on for instead, and how it stands against the plan — which one depending on
+//! whether it has been given the top half of the display or the bottom, so that
+//! adding it to both halves of a screen gives both.
 class PuffingBillyField extends WatchUi.DataField {
 
     //! The distance to the next waypoint is held in metres and drawn in km.
@@ -56,15 +58,15 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _layout as Layout;
 
     //! What the three paces across the middle of the face are, and what each
-    //! projection assumes, in the order they are drawn. Held rather than built
-    //! per draw, since a data field draws about once a second for the length of
-    //! a race.
+    //! projection assumes — the projections in the order the halves of the
+    //! display take them, the upper one first. Held rather than built per draw,
+    //! since a data field draws about once a second for the length of a race.
     private var _paceLabels as Array<String>;
     private var _projLabels as Array<String>;
 
-    //! The train shown in the otherwise empty, tapered end of a half-height
-    //! field. It is imported without dithering in drawables.xml so its small,
-    //! deliberately limited palette stays crisp.
+    //! The train shown above the figures of a half-height field given the top
+    //! of the display. It is imported without dithering in drawables.xml so its
+    //! small, deliberately limited palette stays crisp.
     private var _train as Graphics.BitmapReference;
 
     function initialize() {
@@ -255,38 +257,41 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawText(start + leftW + gap, y, rightFont, right, justify);
     }
 
-    //! Draw the half-height field: the two projected finish times, each
-    //! labelled with the name of the pace it assumes and with the time ahead
-    //! or behind of plan shown next to it
+    //! Draw the half-height field: one projected finish time, labelled with the
+    //! name of the pace it assumes and with the time ahead or behind of plan
+    //! shown next to it.
+    //!
+    //! Which of the two it is comes from where the field has been put, so that
+    //! adding the field to both halves of one data screen shows both: the
+    //! target-pace finish above the middle of the face and the one from the
+    //! current performance ratio below it.
     private function drawHalfScreenField(
         dc as Dc, w as Number,
         fg as Number, labelColour as Number, dark as Boolean
     ) as Void {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        var finishes =
-            [_race.targetFinishS(), _race.perfRatioFinishS()] as Array<Float>;
+        var lower = _face.belowCentre();
+        var finish = lower ? _race.perfRatioFinishS() : _race.targetFinishS();
 
-        for (var i = 0; i < finishes.size(); i += 1) {
-            var finish = finishes[i];
+        var off = finish - _course.planS;
+        var colour = (off < 0.0)
+            ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
+            : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
 
-            var off = finish - _course.planS;
-            var colour = (off < 0.0)
-                ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
-                : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
+        dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            w / 2, _layout.yProjLabel, Graphics.FONT_XTINY,
+            _projLabels[lower ? 1 : 0], centre
+        );
+        drawPair(
+            dc, w, _layout.yProjValue,
+            Fmt.duration(finish), _layout.figureFont, fg,
+            Fmt.standing(off), _layout.figureFont, colour
+        );
 
-            dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(
-                w / 2, _layout.yProjLabel[i], Graphics.FONT_XTINY,
-                _projLabels[i], centre
-            );
-            drawPair(
-                dc, w, _layout.yProjValue[i],
-                Fmt.duration(finish), _layout.figureFont, fg,
-                Fmt.standing(off), _layout.figureFont, colour
-            );
+        if (!lower) {
+            dc.drawBitmap(w / 2 - _train.getWidth() / 2, _layout.yTrain, _train);
         }
-
-        dc.drawBitmap(w / 2 - _train.getWidth() / 2, _layout.yTrain, _train);
     }
 
     //! Draw the full-screen field: the heart rate, the three paces, the course bar,
@@ -377,8 +382,8 @@ class PuffingBillyField extends WatchUi.DataField {
             return;
         }
 
-        // When the field is given half a data screen, we show projected finish times,
-        // otherwise we show pace, heart rate, and current segment info
+        // When the field is given half a data screen, we show a projected
+        // finish time, otherwise pace, heart rate and current segment info
         if (_layout.half) {
             drawHalfScreenField(dc, w, fg, labelColour, dark);
         } else {
