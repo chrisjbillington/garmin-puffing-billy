@@ -4,7 +4,8 @@ import Toybox.Lang;
 import Toybox.Math;
 
 //! The race in progress: which segment is being run, how far and how long into
-//! it, and how hard it is being run against the plan.
+//! it, and how hard it is being run against the plan. Before the activity is
+//! started, the segment it reports cycles through the course instead.
 class Race {
 
     //! Distances are in metres and the activity timer in milliseconds, whereas
@@ -46,6 +47,17 @@ class Race {
     //! is both cheaper and immune to a doubling-back section triggering a later
     //! gate.
     private var _next as Number;
+
+    //! Whether the activity is yet to be started, and, while it is, which
+    //! segment is reported as though it were at the start of it. The index
+    //! steps on by one with each reading, so every segment of the course is
+    //! shown in turn.
+    //!
+    //! Readings come once a second however often the face is drawn, so that is
+    //! the shortest a segment is on screen for. The index starts on the last
+    //! segment, so the first step comes round to the first.
+    private var _previewing as Boolean;
+    private var _preview as Number;
 
     //! The most recent fix, in degrees. Held from the last reading that had
     //! one, not simply the last second, so that a GPS dropout leaves a longer
@@ -97,6 +109,8 @@ class Race {
     function initialize(course as Course) {
         _course = course;
         _next = 0;
+        _previewing = false;
+        _preview = _course.size() - 1;
         _lastLat = null;
         _lastLon = null;
         _distanceM = 0.0;
@@ -169,8 +183,15 @@ class Race {
         speedMps = info.currentSpeed;
         heartRate = info.currentHeartRate;
 
-        if (finished() || info.timerState == Activity.TIMER_STATE_OFF) {
-            // Race finished or not yet started
+        if (finished()) {
+            return;
+        }
+
+        // Not started: step the preview on and take nothing else from the
+        // reading.
+        _previewing = info.timerState == Activity.TIMER_STATE_OFF;
+        if (_previewing) {
+            _preview = (_preview + 1) % _course.size();
             return;
         }
 
@@ -211,9 +232,10 @@ class Race {
         return _next >= _course.size();
     }
 
-    //! The segment being run, as an index into the course.
+    //! The segment on show, as an index into the course: the one being run, or
+    //! the one being previewed while the race is yet to start.
     function segment() as Number {
-        return _next;
+        return _previewing ? _preview : _next;
     }
 
     //! Ground covered in this segment so far, in metres.
@@ -221,12 +243,18 @@ class Race {
         return _distanceM - _segmentStartM;
     }
 
-    //! Distance still to run in this segment, in metres. Goes negative once the
+    //! Distance still to run in segment i, in metres. Goes negative once the
     //! runner is past where the gate should have been but has not yet crossed
     //! it — which is the normal case for a metre or two, since the odometer and
     //! the course never agree exactly.
+    private function remainingInM(i as Number) as Float {
+        return _course.lengthM(i) - ranInSegmentM();
+    }
+
+    //! Distance still to run in the segment on show. Nothing has been run in a
+    //! previewed one, so that is the whole of it.
     function remainingM() as Float {
-        return _course.lengthM(_next) - ranInSegmentM();
+        return remainingInM(segment());
     }
 
     //! Average pace over the part of the current segment run so far, in seconds
@@ -249,9 +277,11 @@ class Race {
     }
 
     //! Plan time still to run, in seconds: what is left of the current segment
-    //! at its own target pace, and every segment after it at theirs.
+    //! at its own target pace, and every segment after it at theirs. Measured
+    //! against the segment being run rather than the one on show, so that a
+    //! preview leaves the projections reading the whole plan.
     private function planRemainingS() as Float {
-        return remainingM() / M_PER_KM * _course.paceS(_next)
+        return remainingInM(_next) / M_PER_KM * _course.paceS(_next)
             + _course.planAfterS(_next);
     }
 

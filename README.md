@@ -49,6 +49,11 @@ Top to bottom:
   reaches -200 m before the next waypoint is reached, the field gives up waiting for the
   gate and moves on to the next segment anyway.
 
+Before the activity has been started, the waypoint name, progress bar, remaining
+distance, and target pace will cycle through the different segments showing the entire
+planned course. This can be used to verify paces and distances were configured correctly
+before actually starting the race.
+
 ### Given half the face
 
 One projected finish time, with how it stands against the planned finish - green and
