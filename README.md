@@ -77,7 +77,7 @@ pace. Its default contents look like this:
 ```json
 {
     "waypoints": {
-        "Trestle Bridge": 1.150,
+        "Trestle Bridge Bend": 1.150,
         "Selby": 2.500,
         "Aura Rd Crossing": 3.250,
         "Old Menzies Ck Rd": 5.025,
@@ -104,9 +104,6 @@ It holds:
 - `pacing.uphill_penalty` and `pacing.downhill_bonus`: fractional slowdown and
   speedup per unit of grade - equivalently, percent per percent - used to turn
   each segment's average grade into its target pace.
-
-Note: the "Trestle Bridge" waypoint occurs roughly when the bridge comes into view, not
-at the bridge itself.
 
 The official course `.gpx` for 2026 is in this repo as
 `segments/official-course-2026.gpx`, and is used to extract segment grades. The default
