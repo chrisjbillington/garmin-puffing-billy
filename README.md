@@ -4,12 +4,13 @@ its grade (based on compile-time configuration).
 
 Does not interact in any way with other activity configuration - segments and pace
 targets as displayed by this data field are totally internally managed and have nothing
-to do with activity laps or intervals or target paces.
+to do with activity laps or intervals or target paces. Activity pausing is ignored (you
+can't pause a race!).
 
 The data field advances the display to the next segment based on the runner's GPS track
 crossing a "gate" at each waypoint - a 200 m long line segment crossing the course,
 defined by the GPS coordinates of its endpoints. In addition, if the GPS distance
-accumulated in a segment is 200m longer than the expected length of the segment, the
+accumulated in a segment is 200 m longer than the expected length of the segment, the
 next segment is triggered even if no gate is passed through. This allows for some
 recovery if for some reason you run around a gate or have a very long GPS dropout.
 
@@ -60,12 +61,15 @@ One projected finish time, with how it stands against the planned finish - green
 negative for time in hand, red and positive for time lost. Which projection you get
 depends on which half of the display the field has been given:
 
-- **at target pace** (top half) - the finish time if everything still to come is run at
-  its target pace.
-- **at current perf. ratio** (bottom half) - the finish time if the rest of the race is
-  run at the same fraction of target pace as an average over the last 500 m
+- **at target pace** (top half): finishing time if the rest of the race is run at
+  target paces
+- **at current perf. ratio** (bottom half): finishing time if the rest of the race is
+  run at the same fraction of target pace as you are currently running (measured as an
+  exponential moving average with a scale of 500 m, so based on your performance
+  over the last 0.5–1 km or so)
 
-So put the field on both halves of one data screen to see both, as in the screenshot.
+Put the field on both halves of a data screen to see both projected finishing times, as
+in the screenshot.
 
 
 Segment and pacing configuration
