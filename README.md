@@ -1,81 +1,79 @@
+![full screen](screenshot.png)
+
 A data field for the Puffing Billy Great Train Race: a 13.6 km run on a fixed course,
-split by named waypoints into segments, each with its own target pace worked out from
-its grade (based on compile-time configuration).
+split by named waypoints into segments, each with its own target pace (configured at
+compile-time)
 
 Does not interact in any way with other activity configuration - segments and pace
 targets as displayed by this data field are totally internally managed and have nothing
-to do with activity laps or intervals or target paces. Activity pausing is ignored (you
-can't pause a race!).
+to do with activity laps or intervals or target paces. The activity being paused is not
+treated any differently (you can't pause a race!).
 
 The data field advances the display to the next segment based on the runner's GPS track
 crossing a "gate" at each waypoint - a 200 m long line segment crossing the course,
 defined by the GPS coordinates of its endpoints. In addition, if the GPS distance
-accumulated in a segment runs past the expected length of the segment by the configured
+accumulated in a segment exceeds the expected length of that segment by the configured
 `overdistance` (200 m by default), the next segment is triggered even if no gate is
-passed through. This allows for some recovery if for some reason you run around a gate
-or have a very long GPS dropout.
+passed. This allows for some recovery if for some reason you run around a gate or have a
+very long GPS dropout.
 
 Only tested on a Venu 4 41mm, and pace configuration is currently at compile-time, so
 you're welcome to use this (or have your favourite chatbot adapt it to your use) but it
-is substantially vibe-coded and not intended to be general.
+is not currently intended to be particularly general.
 
-the field
----------
-
-![full screen](screenshot.png)
+Data field contents
+-------------------
 
 What the field shows depends on how much of the display the activity's layout gives it.
 
 It has a full-screen version, and two half-screen versions (top and bottom half). You
 can include the full-screen version on one data screen and both half-screen versions on
-another, to see everything.
+another, to see everything as in the above screenshot.
 
-### Given the whole face
+### Full-screen
 
-Top to bottom:
+From top to bottom:
 
-- **Heart rate**, in bpm, with `---` until the watch has a reading.
-- **target** - the current segment's target pace, in minutes per km.
-- **segment** - average pace over the part of the current segment run so far
-- **pace** - instantaneous pace, from the watch's current speed.
-- **The bar** - the whole course, start at the left and finish at the right, one block
-  per segment sized by its length and coloured by its target pace against the course
-  average: green where the plan is fast, red where it's slow, amber in between. Course
-  still to run is dimmed and course already run brighter, with a marker at the current
-  position.
+- **heart rate** in bpm
+- **target** - target pace for current segment in minutes per km.
+- **segment** - average pace over current segment so far.
+- **pace** - current pace.
+- **Race progress bar** - distance progress bar of the course, with a marker at the
+  current position and each each segment coloured by its target pace: green when much
+  faster than the target average pace, red when much slower, and orange in between.
 - **Next waypoint name** the waypoint being run towards, i.e. the end of the
   current segment.
-- **Remaining segment distance** - how far is left to that waypoint, in km. It counts
-  down, and can go negative if GPS distance (due to error or otherwise) in the segment
-  grows larger than the expected segment length before reaching the next waypoint. If it
-  goes negative by more than the configured `overdistance` (-200 m by default), the
-  field advances to the next segment despite not having encountered the expected
-  waypoint.
+- **Segment remaining distance** - distance to the next waypoint. Counts down, and can
+  go negative if GPS distance (due to error or otherwise) in the segment grows larger
+  than the expected segment length before reaching the next waypoint. If it goes
+  negative by more than the configured `overdistance` (-200 m by default), the display
+  advances to the next segment despite not having encountered the expected waypoint.
 
 Before the activity has been started, the waypoint name, progress bar, remaining
 distance, and target pace will cycle through the different segments showing the entire
 planned course. This can be used to verify paces and distances were configured correctly
 before actually starting the race.
 
-### Given half the face
+### Half-screen (top half)
 
 One projected finish time, with how it stands against the planned finish - green and
 negative for time in hand, red and positive for time lost. Which projection you get
 depends on which half of the display the field has been given:
 
-- **at target pace** (top half): finishing time if the rest of the race is run at
-  target paces
-- **at current perf. ratio** (bottom half): finishing time if the rest of the race is
-  run at the same fraction of target pace as you are currently running (measured as an
-  exponential moving average with a scale of the configured `perf_ratio_scale`, 500 m by
-  default, so based on your performance over the last 0.5–1 km or so)
+- **projected finish at target pace**: finishing time if the rest of the race is run at
+  target paces, and whether this is ahead or behind the original target finishing time
 
-Put the field on both halves of a data screen to see both projected finishing times, as
-in the screenshot.
+### Half-screen (bottom half)
+
+- **projected finish time at current performance ratio**: finishing time if the rest of
+  the race is run at the same fraction of target pace as you are currently running
+  (measured as an exponential moving average with a scale of the configured
+  `perf_ratio_scale`, 500 m by default, i.e. based on your performance over the last
+  0.5–1 km or so)
 
 
-Segment and pacing configuration
---------------------------------
+Configuration
+-------------
 
 Desired segments and and target pacing is configured in `config.toml`, see there for
 details. It has three sections:
@@ -128,25 +126,6 @@ averaging scale config parameters.
 `plot_segments.py` is not part of the `make` pipeline, but can be run manually after
 `make segments` to plot the course with the gates overlaid and the elevation profile
 (saved to `out/course_gates.png` and `out/course_elevation.png`) to check they are sane.
-
-source
-------
-
-One class or module per job, under `source/`:
-
-- `PuffingBillyApp.mc` - the app shell, which returns the field as its only view.
-- `PuffingBillyField.mc` - the data field itself: the three callbacks, the colours and
-  all of the drawing.
-- `Course.mc` - the segments, their target paces and their gates, read from the
-  compiled-in JSON resource, plus the line-crossing test against a gate.
-- `Race.mc` - the race in progress: which segment is being run, how far and how long
-  into it, how hard it is being run against the plan, and the two projected finishes.
-- `Layout.mc` - the vertical rhythm, solved whenever the screen region the field has
-  been given changes, and read on every draw.
-- `Face.mc` - the round display, where the field has been placed on it, and the circle
-  left once the bezel clearance is taken off.
-- `Roboto.mc` - the glyph metrics the Graphics API doesn't report.
-- `Fmt.mc` - string formatting of paces, durations and standings as strings.
 
 setup bits and bobs
 -------------------
@@ -239,3 +218,21 @@ overridden per invocation:
 make run DEVICE=venu445mm
 make build TYPECHECK=0
 ```
+
+source
+------
+
+Brief summary of what each file in `source/` is for:
+
+- `PuffingBillyApp.mc` - minimal boilerplate app shell.
+- `PuffingBillyField.mc` - the data field, including its callbacks and drawing
+- `Course.mc` - the segments, their target paces and their gates, read from the
+  compiled-in JSON resource, plus the line-crossing test against a gate.
+- `Race.mc` - the race in progress: which segment is being run, how far and how long
+  into it, how hard it is being run against the plan, and the two projected finishes.
+- `Layout.mc` - the vertical rhythm, solved whenever the screen region the field has
+  been given changes, and read on every draw.
+- `Face.mc` - the round display, where the field has been placed on it, and the circle
+  left once the bezel clearance is taken off.
+- `Roboto.mc` - the glyph metrics the Graphics API doesn't report.
+- `Fmt.mc` - string formatting of paces, durations and standings
