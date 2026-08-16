@@ -317,8 +317,8 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Draw the full-screen field: the heart rate, the three paces, the course bar,
     //! and the waypoint being run towards with the distance still to it.
     private function drawFullScreenField(
-        dc as Dc, w as Number,
-        fg as Number, labelColour as Number, nameColour as Number
+        dc as Dc, w as Number, fg as Number, labelColour as Number,
+        nameColour as Number, dark as Boolean
     ) as Void {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         var segment = _race.segment();
@@ -360,9 +360,16 @@ class PuffingBillyField extends WatchUi.DataField {
         // of the three: the value runs to five characters once the distance
         // goes negative on the approach to a gate, and "km" hangs off the end
         // of it. That, rather than the rows above, is what holds its size down.
+        // The distance is red once it goes negative, which is the runner past
+        // where the gate should have been with the crossing not yet detected.
+        var remainingM = _race.remainingM();
+        var remainingColour = (remainingM < 0.0)
+            ? (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT)
+            : fg;
         drawPair(
             dc, w, _layout.yRemaining,
-            (_race.remainingM() / M_PER_KM).format("%.2f"), _layout.figureFont, fg,
+            (remainingM / M_PER_KM).format("%.2f"),
+            _layout.figureFont, remainingColour,
             "km", Graphics.FONT_XTINY, labelColour
         );
 
@@ -409,7 +416,7 @@ class PuffingBillyField extends WatchUi.DataField {
         if (_layout.half) {
             drawHalfScreenField(dc, w, fg, labelColour, dark);
         } else {
-            drawFullScreenField(dc, w, fg, labelColour, nameColour);
+            drawFullScreenField(dc, w, fg, labelColour, nameColour, dark);
         }
     }
 }
