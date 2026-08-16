@@ -1,12 +1,11 @@
 import Toybox.Application;
 import Toybox.Lang;
 
-//! The course the race is run on: the segments it is split into, the pace each
-//! is to be run at, and the gate that ends each.
-//!
+//! The course we're running: segment names, lengths, target paces, GPS "gates" defining
+//! the end of each segment, and other course-related configuration
+//! 
 //! The watch knows nothing of the course beyond this. It is compiled in as a
-//! JSON resource built by segments/make_segments.py; see README.md for that
-//! pipeline.
+//! JSON resource built by make_segments.py; see README.md for that pipeline.
 class Course {
 
     //! Segment lengths are in metres, target paces per km.
@@ -32,19 +31,27 @@ class Course {
     var planS as Float;
     var meanPaceS as Float;
 
-    //! Plan time still to come once each segment has been finished, in seconds,
-    //! so that projecting the rest of the race is a lookup and a part-segment
-    //! rather than a walk down the course.
+    //! How far past a gate the runner may get before the segment is advanced despite
+    //! not encountering the gate, and the length scale over which the performance ratio
+    //! exponential moving average is computed, both in metres. Set in config.toml.
+    var overdistanceM as Float;
+    var perfRatioScaleM as Float;
+
+    //! Plan time still to come once each segment has been finished, in seconds, for use
+    //! projecting finishing time
     private var _planAfter as Array<Float>;
 
     function initialize() {
         var data =
             Application.loadResource($.Rez.JsonData.Segments) as
-            Dictionary<String, Array>;
+            Dictionary<String, Object>;
         _names = data["names"] as Array<String>;
         _lengths = data["lengths"] as Array<Number>;
         _paces = data["paces"] as Array<Float>;
         _gates = data["gates"] as Array<Number>;
+
+        overdistanceM = (data["overdistance"] as Number).toFloat();
+        perfRatioScaleM = (data["perf_ratio_scale"] as Number).toFloat();
 
         totalM = 0.0;
         planS = 0.0;

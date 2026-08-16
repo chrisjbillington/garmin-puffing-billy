@@ -13,30 +13,10 @@ class Race {
     private const M_PER_KM = 1000.0;
     private const MS_PER_S = 1000.0;
 
-    //! How far past a gate the runner may get before we give up waiting for it
-    //! and move on. Gates are only ever tested in order, so without this one
-    //! missed gate — a long GPS dropout, a wide detour around the course —
-    //! would stall every later one for the rest of the race.
-    private const OVERDISTANCE_M = 200.0;
-
-    //! The distance, in metres, over which pace is averaged against target pace
-    //! before a finish is projected from it. The average is decayed by ground
-    //! covered rather than by time elapsed, so it looks back over the same
-    //! stretch of course however fast that stretch is being run.
-    //!
-    //! 500 m is the length of the shortest segment on this course and a
-    //! twenty-seventh of the whole: long enough that a second's worth of GPS
-    //! scatter counts for almost nothing, short enough that the climb or
-    //! descent underfoot is what the projection is made from.
-    private const PACE_WINDOW_M = 500.0;
-
-    //! How much running that average is seeded with before the race has fed it
-    //! anything, as a distance in metres taken to have been run exactly to
-    //! plan. Its whole job is to keep the divisor off zero, so it is set well
-    //! under what one second of running brings: a metre is a quarter of a
-    //! second of plan time against the second or so a sample carries, which
-    //! leaves four fifths of the opening reading to the opening stride and has
-    //! the seed down to a hundredth of it by 100 m.
+    //! Distance at initial target pace with which the performance ratio exponential
+    //! moving average is seeded. This is just to prevent division by zero, and doesn't
+    //! meaningfully affect early performance estimates which are still dominated by
+    //! actual data
     private const PACE_SEED_M = 1.0;
 
     private var _course as Course;
@@ -79,24 +59,12 @@ class Race {
     private var _elapsedMs as Number;
     private var _segmentStartMs as Number;
 
-    //! Time actually taken, and the time the plan allows for the same ground,
-    //! both decayed by the distance run since. Their ratio is how hard the race
-    //! is being run against its target over the last PACE_WINDOW_M or so.
+    //! Actual time taken, and time taken at target pace, decayed by the distance
+    //! run. Their ratio is a smoothed measure of actual speed as a fraction of
+    //! target speed, with a smoothing length scale of perfRatioScaleM.
     //!
-    //! Two sums divided at the end, rather than one averaged ratio, because
-    //! only the ratio of the sums answers the question asked of it: run a
-    //! stretch at a steady fraction of target and it reads that fraction
-    //! exactly, however the samples fell and whatever the target pace was doing
-    //! underneath. A ratio averaged sample by sample reads high instead, since
-    //! a second covering little ground gives a large one and would carry the
-    //! same weight as a second covering plenty.
-    //!
-    //! Both start at PACE_SEED_M of the opening target pace, which puts them
-    //! beyond ever being asked to divide by zero — the decay only ever scales
-    //! them and every step only ever adds — and is spent by the first sample.
-    //! Each sample carries nothing but its own share of plan time, so the
-    //! opening reading is the opening stride and no more than it: noisy, and
-    //! honestly so.
+    //! Both start at PACE_SEED_M worth of time at the initial target pace, to
+    //! prevent division by zero.
     private var _takenS as Float;
     private var _allowedS as Float;
 
@@ -126,21 +94,16 @@ class Race {
         _allowedS = seeded;
     }
 
-    //! Fold one step of `ds` metres taken in `dt` seconds into the running
-    //! totals, first decaying what is already there by the ground just covered.
-    //!
-    //! A step that covers no ground still charges its time to the totals and
-    //! decays nothing out of them, so time spent standing still raises the
-    //! ratio until enough ground is covered to decay it away.
+    //! Update performance ratio EMAs with a distance increment of `ds` metres
+    //! and time increment of `dt` seconds
     private function accumulate(ds as Float, dt as Float) as Void {
-        var decay = Math.pow(Math.E, -ds / PACE_WINDOW_M).toFloat();
+        var decay = Math.pow(Math.E, -ds / _course.perfRatioScaleM).toFloat();
         _takenS = decay * _takenS + dt;
         _allowedS = decay * _allowedS + ds / M_PER_KM * _course.paceS(_next);
     }
 
-    //! Announce a new segment with the watch's interval tone and a short,
-    //! distinctive double vibration. Guard both capabilities so the field can
-    //! still run if another supported product lacks either of them.
+    //! Announce a new segment with a tone and vibration pattern, if watch
+    //! supports tones/vibration
     private function alertNewSegment() as Void {
         if (Attention has :playTone) {
             Attention.playTone(Attention.TONE_LAP);
@@ -207,7 +170,7 @@ class Race {
             _lastLat = lat;
             _lastLon = lon;
         }
-        if (crossedGate || remainingM() < -OVERDISTANCE_M) {
+        if (crossedGate || remainingM() < -_course.overdistanceM) {
             advance();
         }
     }

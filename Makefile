@@ -9,7 +9,7 @@ SDK       ?= $(lastword $(sort $(wildcard $(SDK_ROOT)/connectiq-sdk-lin-*)))
 BIN       := $(SDK)/bin
 
 DEVICE    ?= venu441mm
-KEY       ?= developer_key.der
+KEY       ?= .secrets/developer_key.der
 NAME      ?= PuffingBilly
 TYPECHECK ?= 3
 
@@ -18,10 +18,9 @@ PRG := $(OUT)/$(NAME)-$(DEVICE).prg
 IQ  := $(OUT)/$(NAME).iq
 
 # The course data compiled into the app, and what it is built from. Every build
-# depends on this file, so an edit to config.json cannot be left out of a .prg.
-RESOURCE := segments/out/resource.json
-COURSE   := segments/make_segments.py segments/config.json \
-            segments/official-course-2026.gpx
+# depends on this file, so an edit to config.toml cannot be left out of a .prg.
+RESOURCE := out/resource.json
+COURSE   := make_segments.py config.toml official-course-2026.gpx
 
 SOURCES := manifest.xml monkey.jungle $(RESOURCE) \
            $(shell find source resources -type f 2>/dev/null)
@@ -40,7 +39,7 @@ check:
 # make_segments.py writes segments.json alongside resource.json; the one named
 # here stands for both.
 $(RESOURCE): $(COURSE)
-	python segments/make_segments.py
+	python make_segments.py
 
 segments: $(RESOURCE)
 

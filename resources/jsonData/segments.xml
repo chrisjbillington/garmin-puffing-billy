@@ -1,4 +1,4 @@
 <?xml version="1.0"?>
 <resources>
-    <jsonData id="Segments" filename="../../segments/out/resource.json"/>
+    <jsonData id="Segments" filename="../../out/resource.json"/>
 </resources>

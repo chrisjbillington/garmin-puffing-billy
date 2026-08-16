@@ -1,0 +1,61 @@
+[waypoints]
+
+# Waypoints marking the end of each segment, in order, and the distance in km each is
+# into the course. The last entry is the finish line and there is no entry for the
+# starting line.
+#
+# After changing these, run `plot_segments.py` to see how well constant-grade segments
+# split at these waypoints approximate the grade of the course, and to confirm that the
+# gates marking the end of each segment don't overlap the course too early (e.g. if
+# there are switchback sections), which would trigger end-of-segment detection
+# prematurely
+
+"Trestle Bridge Bend" = 1.150
+"Selby" = 2.500
+"Aura Rd Crossing" = 3.250
+"Old Menzies Ck Rd" = 5.025
+"Menzies Ck Crossing" = 6.590
+"Menzies Rd Crest" = 7.350
+"Clematis Crossing" = 7.850
+"Clematis Pub" = 8.750
+"Emerald Crossing" = 10.260
+"Lakeside" = 13.613
+
+
+[pacing]
+
+# The target pace for each segment, either given as an explicit list or calculated from
+# a flat pace, a split delta and grade adjustment. If the explicit list is present, the
+# remaining configuration in this section is ignored
+
+# paces = [
+#     "4:27", "5:50", "4:46", "4:33", "6:12",
+#     "5:16", "4:03", "4:44", "5:30", "4:34",
+# ]
+
+# The average pace you would run the course at if it were flat
+flat_pace = "4:45"
+
+# The fractional difference in pace of the second half of an equivalent flat course with
+# respect to the first half, describing a linear ramp in pace, i.e. -0.01 is what is
+# usually referred to as a "1% negative split"
+split_delta = -0.01
+
+# The fractional slowdown and speedup from flat pace per unit of average grade, (i.e.
+# percent change in pace per percentage point of grade).
+uphill_penalty = 5
+downhill_bonus = 1.75
+
+
+[tracking]
+
+# Other config parameters used on the watch 
+
+# How much further in metres one can run in a segment, in excess of the expected length
+# of the segment, before the field advances to the next segment despite not having
+# encountered the end-of-segment waypoint
+overdistance = 200
+
+# Averaging length scale in metres for the performance ratio - how fast one is running
+# as a fraction of target, used for one of the finishing time projections
+perf_ratio_scale = 500

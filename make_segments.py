@@ -1,7 +1,7 @@
-"""Process user config config.json to locate the race-split waypoints on the course, and
+"""Process user config config.toml to locate the race-split waypoints on the course, and
 calculate per-segment pacing.
 
-Reads the segment endpoint, defined by their distance into the course, from config.json,
+Reads the segment endpoint, defined by their distance into the course, from config.toml,
 and the course track from the .gpx file, and works out where along the track each
 segment boundary falls. Writes out/segments.json with each waypoint's name, distance
 into the course, coordinates, the heading of the course at that point, and the two ends
@@ -14,9 +14,9 @@ metres of the waypoint. Fitting a curve over a window rather than taking the
 bearing between the two adjacent track points keeps the heading from swinging
 wildly where the course has a sharp kink in it.
 
-Target pacing is either given per segment in config.json, or calculated from a flat
+Target pacing is either given per segment in config.toml, or calculated from a flat
 pace, a split delta and uphill/downhill pace penalty/bonus factors read from
-config.json. Either way it is saved in segments.json.
+config.toml. Either way it is saved in segments.json.
 
 Also writes out/resource.json, the subset of that which goes on the watch, in the shape
 the data field wants it. See make_resource().
@@ -26,6 +26,7 @@ from pathlib import Path
 import json
 import math
 import itertools
+import tomllib
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -36,7 +37,7 @@ percent = 0.01
 
 THIS_DIR = Path(__file__).absolute().parent
 OUT_DIR = THIS_DIR / 'out'
-CONFIG_FILE = THIS_DIR / "config.json"
+CONFIG_FILE = THIS_DIR / "config.toml"
 GPX_FILE = THIS_DIR / "official-course-2026.gpx"
 SEGMENTS_FILE = OUT_DIR / "segments.json"
 RESOURCE_FILE = OUT_DIR / "resource.json"
@@ -99,15 +100,15 @@ def split2pace(distance, course_length, flat_pace, split_delta):
 
 
 def segment_pace(pacing, index, midpoint, course_length, grade):
-    """Target pace in seconds per km for one segment, from config.json's "pacing".
+    """Target pace in seconds per km for one segment, from config.toml's [pacing].
 
-    That is either a list of "m:ss" paces, one per segment, which are used as they
-    stand, or the parameters to calculate a pace from: the flat pace the split delta
-    calls for at `midpoint`, the middle of the segment in metres into the course,
-    adjusted for the segment's average `grade`.
+    That is either the segment's own "m:ss" pace from `paces`, used as it stands, or
+    the parameters to calculate a pace from: the flat pace the split delta calls for
+    at `midpoint`, the middle of the segment in metres into the course, adjusted for
+    the segment's average `grade`.
     """
-    if isinstance(pacing, list):
-        return parse_pace(pacing[index])
+    if "paces" in pacing:
+        return parse_pace(pacing["paces"][index])
     flat_pace = split2pace(
         midpoint,
         course_length,
@@ -236,19 +237,24 @@ def heading_at(s, lats, lons, target):
     return 180 / np.pi * math.atan2(d_east, d_north)
 
 
-def make_segments():
+def load_config():
+    """The user config, as read from config.toml."""
+    return tomllib.loads(CONFIG_FILE.read_text('utf8'))
+
+
+def make_segments(config):
     """Locate each waypoint on the track, pace its segment, and write segments.json.
 
     Returns the segments, keyed by waypoint name and in course order.
     """
-    config = json.loads(CONFIG_FILE.read_text('utf8'))
     waypoints = config['waypoints']
     pacing = config['pacing']
     course_length = list(waypoints.values())[-1] * km
 
-    if isinstance(pacing, list) and len(pacing) != len(waypoints):
+    if "paces" in pacing and len(pacing["paces"]) != len(waypoints):
         raise ValueError(
-            f"config.json gives {len(pacing)} paces for {len(waypoints)} segments"
+            f"config.toml gives {len(pacing['paces'])} paces "
+            f"for {len(waypoints)} segments"
         )
 
     points = read_track(GPX_FILE)
@@ -311,7 +317,7 @@ def make_segments():
 
     print(f"       Total time: {format_pace(total_time)}")
     print(f"     Average pace: {format_pace(avg_pace)}/km")
-    if not isinstance(pacing, list):
+    if "paces" not in pacing:
         flat_pace = parse_pace(pacing["flat_pace"])
         print(f"Difficulty factor: {avg_pace/flat_pace:.3f}")
 
@@ -326,28 +332,16 @@ def semicircles(degrees):
     return round(degrees * SEMICIRCLES_PER_DEGREE)
 
 
-def make_resource(segments):
+def make_resource(segments, tracking):
     """Write out/resource.json, the part of the segments that goes on the watch.
 
-    The data field only needs what it draws or tests against: the segment names,
-    their lengths, their target paces, and the gates. The rest of segments.json is
-    either working (heading, elevation) or derivable on the watch (cumulative
-    distance is the running sum of the lengths), and a data field's memory budget
-    is small enough to bother leaving it behind.
+    The data field only has access at runtime to the segment names, their lengths, their
+    target paces, the gates, and the overdistance and performance ratio averaging scale
+    config parameters. The rest of segments.json is for convenience plotting the results
+    with plot_segments.py, and is not needed on the watch.
 
-    Parallel arrays rather than a dict per segment, for the same reason: a Monkey C
-    Dictionary costs per entry, and the nested form would put ten copies of the same
-    six key strings on the heap.
-
-    Coordinates go out as integer semicircles rather than degrees. A JSON resource's
-    numeric type is documented only as Numeric, and if the compiler makes a 32-bit
-    Float of a decimal literal then ~7 significant digits quantises a 145 degree
-    longitude at about a metre - the same scale as the gate geometry we're testing
-    against. Integers land in Number, which converts to Double exactly, so the
-    question doesn't arise. Lengths are whole metres for the same reason. Paces are
-    left as decimals: seconds per km needs about 5 significant digits, which is
-    comfortably inside what a Float holds either way.
-    """
+    Gate coordinates are stored in units of integer semicircles rather than degrees, as
+    the latter are stored as 32-bit floats which can have quantisation error > 1 m."""
     resource = {
         "names": list(segments),
         "lengths": [round(seg["length"]) for seg in segments.values()],
@@ -361,6 +355,9 @@ def make_resource(segments):
             for end in ("gate_left_", "gate_right_")
             for coord in ("lat", "lon")
         ],
+        # Whole metres, for the same reason the lengths are.
+        "overdistance": round(tracking["overdistance"]),
+        "perf_ratio_scale": round(tracking["perf_ratio_scale"]),
     }
 
     RESOURCE_FILE.write_text(json.dumps(resource, indent=4), 'utf8')
@@ -369,4 +366,5 @@ def make_resource(segments):
 
 if __name__ == "__main__":
     OUT_DIR.mkdir(exist_ok=True)
-    make_resource(make_segments())
+    config = load_config()
+    make_resource(make_segments(config), config["tracking"])
