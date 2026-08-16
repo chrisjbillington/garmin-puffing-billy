@@ -100,15 +100,18 @@ class PuffingBillyField extends WatchUi.DataField {
     //! here, not in onUpdate() — onUpdate() is called on the device's own
     //! schedule, which on an AMOLED watch drops right off in low-power mode.
     function compute(info as Activity.Info) as Void {
-        if (_race.wasReset(info)) {
-            _race = new Race(_course);
-        }
         _race.update(info);
+    }
+
+    //! The activity has ended. Start a new race, so a following activity does
+    //! not run on the distances and times this one accumulated.
+    function onTimerReset() as Void {
+        _race = new Race(_course);
     }
 
     //! Lay out the field based on what screen region it has been assigned, and cache
     //! the result, recomputing only if the screen region's dimensions or obscurity
-    //! flags change. This may only be called during during onUpdate(), since
+    //! flags change. This may only be called during onUpdate(), since
     //! getObscurityFlags() must only be called from onUpdate().
     private function ensureLayout(dc as Dc) as Void {
         var w = dc.getWidth();

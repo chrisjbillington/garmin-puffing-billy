@@ -8,7 +8,7 @@ import Toybox.Math;
 //! started, the segment it reports cycles through the course instead.
 class Race {
 
-    //! Distances are in metres and the activity timer in milliseconds, whereas
+    //! Distances are in metres and activity times in milliseconds, whereas
     //! paces are per km and every projection is in seconds.
     private const M_PER_KM = 1000.0;
     private const MS_PER_S = 1000.0;
@@ -74,10 +74,9 @@ class Race {
     //! segment fresh keeps that drift from compounding over thirteen km.
     private var _segmentStartM as Float;
 
-    //! Timer time, in milliseconds, and the reading of it at the start of the
-    //! current segment. Timer time rather than elapsed time, so that a pause at
-    //! a drink station doesn't count against the segment's pace.
-    private var _timerMs as Number;
+    //! Elapsed time, in milliseconds, and its reading at the start of the
+    //! current segment.
+    private var _elapsedMs as Number;
     private var _segmentStartMs as Number;
 
     //! Time actually taken, and the time the plan allows for the same ground,
@@ -115,7 +114,7 @@ class Race {
         _lastLon = null;
         _distanceM = 0.0;
         _segmentStartM = 0.0;
-        _timerMs = 0;
+        _elapsedMs = 0;
         _segmentStartMs = 0;
         speedMps = null;
         heartRate = null;
@@ -127,26 +126,13 @@ class Race {
         _allowedS = seeded;
     }
 
-    //! Whether the reading belongs to a later activity than the one this race
-    //! has been following. The activity timer only ever runs forward within one
-    //! activity, so a reading behind where the race has got to is the activity
-    //! having been reset
-    function wasReset(info as Activity.Info) as Boolean {
-        var t = info.timerTime;
-        return t != null && t < _timerMs;
-    }
-
     //! Fold one step of `ds` metres taken in `dt` seconds into the running
     //! totals, first decaying what is already there by the ground just covered.
     //!
-    //! A step that covered nothing is dropped rather than counted as time lost.
-    //! Standing still is not an effort being held, and what it costs is already
-    //! in the elapsed time both projections are built on; leaving it out is
-    //! also what keeps the totals from ever being asked to divide by zero.
+    //! A step that covers no ground still charges its time to the totals and
+    //! decays nothing out of them, so time spent standing still raises the
+    //! ratio until enough ground is covered to decay it away.
     private function accumulate(ds as Float, dt as Float) as Void {
-        if (ds <= 0.0 || dt <= 0.0) {
-            return;
-        }
         var decay = Math.pow(Math.E, -ds / PACE_WINDOW_M).toFloat();
         _takenS = decay * _takenS + dt;
         _allowedS = decay * _allowedS + ds / M_PER_KM * _course.paceS(_next);
@@ -168,11 +154,11 @@ class Race {
         }
     }
 
-    //! Move on to the next segment, taking the current odometer and timer
+    //! Move on to the next segment, taking the current odometer and clock
     //! readings as the boundary.
     private function advance() as Void {
         _segmentStartM = _distanceM;
-        _segmentStartMs = _timerMs;
+        _segmentStartMs = _elapsedMs;
         _next += 1;
         alertNewSegment();
     }
@@ -194,7 +180,7 @@ class Race {
             return;
         }
 
-        var t = info.timerTime;
+        var t = info.elapsedTime;
         var d = info.elapsedDistance;
 
         // Before the odometer and the clock are moved on, and before any gate
@@ -202,9 +188,9 @@ class Race {
         // was run in. A second the watch has no reading for leaves both where
         // they are, and the step it belonged to is folded into the next one.
         if (t != null && d != null) {
-            accumulate(d - _distanceM, (t - _timerMs) / MS_PER_S);
+            accumulate(d - _distanceM, (t - _elapsedMs) / MS_PER_S);
             _distanceM = d;
-            _timerMs = t;
+            _elapsedMs = t;
         }
 
         var crossedGate = false;
@@ -263,7 +249,7 @@ class Race {
         if (km <= 0.0) {
             return null;
         }
-        return ((_timerMs - _segmentStartMs) / MS_PER_S) / km;
+        return ((_elapsedMs - _segmentStartMs) / MS_PER_S) / km;
     }
 
     //! Instantaneous pace, in seconds per km.
@@ -285,17 +271,17 @@ class Race {
     }
 
     //! The finish time the race is on for if the rest of it is run to plan, in
-    //! seconds of timer time. Its standing against the plan is just the time
+    //! seconds of elapsed time. Its standing against the plan is just the time
     //! won or lost so far, since everything ahead is being counted at its
     //! target.
     function targetFinishS() as Float {
-        return _timerMs / MS_PER_S + planRemainingS();
+        return _elapsedMs / MS_PER_S + planRemainingS();
     }
 
     //! The finish time the race is on for if the rest of it is run at the
     //! fraction of target pace the last PACE_WINDOW_M has been run at, applied
     //! to every segment still to come.
     function perfRatioFinishS() as Float {
-        return _timerMs / MS_PER_S + _takenS / _allowedS * planRemainingS();
+        return _elapsedMs / MS_PER_S + _takenS / _allowedS * planRemainingS();
     }
 }
