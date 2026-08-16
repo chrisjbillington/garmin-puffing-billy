@@ -1,25 +1,27 @@
 ![full screen](screenshot.png)
 
-A data field for the Puffing Billy Great Train Race: a 13.6 km run on a fixed course,
-split by named waypoints into segments, each with its own target pace (configured at
-compile-time)
+A data field for pacing in the 13.5km Puffing Billy Great Train Race, with the course
+split into segments, each with its own target pace. This is useful because PacePro does
+a poor job with segmenting hilly courses, particularly this one, for which Garmin seems
+to have overly smoothed elevation data.
+
+The watch doesn't store the entire course track - the course segment displayed advances
+based on the runner's GPS track crossing a "gate" at each waypoint - a 200 m long line
+segment crossing the course, defined by the GPS coordinates of its endpoints. As a
+fallback, if the GPS distance accumulated in a segment exceeds the expected length of
+that segment by the configured `overdistance` (200 m by default), the display also
+advances to the next segment even if no gate was passed. This allows for some recovery
+if for some reason you run around a gate or have a very long GPS dropout.
+
+The watch vibrates and plays a "next lap" tone upon advancing to the next segment.
 
 Does not interact in any way with other activity configuration - segments and pace
-targets as displayed by this data field are totally internally managed and have nothing
-to do with activity laps or intervals or target paces. The activity being paused is not
-treated any differently (you can't pause a race!).
-
-The data field advances the display to the next segment based on the runner's GPS track
-crossing a "gate" at each waypoint - a 200 m long line segment crossing the course,
-defined by the GPS coordinates of its endpoints. In addition, if the GPS distance
-accumulated in a segment exceeds the expected length of that segment by the configured
-`overdistance` (200 m by default), the next segment is triggered even if no gate is
-passed. This allows for some recovery if for some reason you run around a gate or have a
-very long GPS dropout.
+targets as displayed by this data field are internally managed and have nothing to do
+with activity laps or intervals or target paces.
 
 Only tested on a Venu 4 41mm, and pace configuration is currently at compile-time, so
-you're welcome to use this (or have your favourite chatbot adapt it to your use) but it
-is not currently intended to be particularly general.
+not especially user-friendly, but you're welcome to use or get your favourite chatbot to
+adapt to your use.
 
 Data field contents
 -------------------
@@ -34,12 +36,12 @@ another, to see everything as in the above screenshot.
 
 From top to bottom:
 
-- **heart rate** in bpm
+- **heart rate** in bpm.
 - **target** - target pace for current segment in minutes per km.
 - **segment** - average pace over current segment so far.
 - **pace** - current pace.
 - **Race progress bar** - distance progress bar of the course, with a marker at the
-  current position and each each segment coloured by its target pace: green when much
+  current position and each segment coloured by its target pace: green when much
   faster than the target average pace, red when much slower, and orange in between.
 - **Next waypoint name** the waypoint being run towards, i.e. the end of the
   current segment.
@@ -55,10 +57,6 @@ planned course. This can be used to verify paces and distances were configured c
 before actually starting the race.
 
 ### Half-screen (top half)
-
-One projected finish time, with how it stands against the planned finish - green and
-negative for time in hand, red and positive for time lost. Which projection you get
-depends on which half of the display the field has been given:
 
 - **projected finish at target pace**: finishing time if the rest of the race is run at
   target paces, and whether this is ahead or behind the original target finishing time
