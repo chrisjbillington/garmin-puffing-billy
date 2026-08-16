@@ -143,7 +143,7 @@ class Race {
     //! still run if another supported product lacks either of them.
     private function alertNewSegment() as Void {
         if (Attention has :playTone) {
-            Attention.playTone(Attention.TONE_INTERVAL_ALERT);
+            Attention.playTone(Attention.TONE_LAP);
         }
         if (Attention has :vibrate) {
             Attention.vibrate([
