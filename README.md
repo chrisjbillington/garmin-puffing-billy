@@ -1,17 +1,17 @@
-![full screen](screenshot.png)
+Garmin Puffing Billy race data field
+------------------------------------
 
-A data field for pacing in the 13.5km Puffing Billy Great Train Race, with the course
-split into segments, each with its own target pace. This is useful because PacePro does
-a poor job with segmenting hilly courses, particularly this one, for which Garmin seems
-to have overly smoothed elevation data.
+A data field for pacing in the 13.5km Puffing Billy Running Festival 13.5 km classic,
+with the course split into segments, each with its own target pace. This is useful
+because PacePro does a poor job with segmenting hilly courses, particularly this one,
+for which Garmin seems to have overly smoothed elevation data.
 
-The watch doesn't store the entire course track - the course segment displayed advances
-based on the runner's GPS track crossing a "gate" at each waypoint - a 200 m long line
-segment crossing the course, defined by the GPS coordinates of its endpoints. As a
-fallback, if the GPS distance accumulated in a segment exceeds the expected length of
-that segment by the configured `overdistance` (200 m by default), the display also
-advances to the next segment even if no gate was passed. This allows for some recovery
-if for some reason you run around a gate or have a very long GPS dropout.
+The watch doesn't store the course track - the segment displayed advances based on the
+runner's GPS track crossing a "gate" (a 200 m long line segment crossing the course) at
+each waypoint. As a fallback, if the GPS distance accumulated in a segment exceeds the
+expected length of that segment by the configured `overdistance` (200 m by default), the
+display also advances to the next segment even if no gate was passed. This allows for
+some recovery if for some reason you run around a gate or have a very long GPS dropout.
 
 The watch vibrates and plays a "next lap" tone upon advancing to the next segment.
 
@@ -21,30 +21,31 @@ with activity laps or intervals or target paces.
 
 Only tested on a Venu 4 41mm, and pace configuration is currently at compile-time, so
 not especially user-friendly, but you're welcome to use or get your favourite chatbot to
-adapt to your use.
+adapt for your use. I expect it should work on most recent watches with at least a 390px
+screen.
 
 Data field contents
 -------------------
 
-What the field shows depends on how much of the display the activity's layout gives it.
+![screenshot](screenshot.png)
 
-It has a full-screen version, and two half-screen versions (top and bottom half). You
-can include the full-screen version on one data screen and both half-screen versions on
-another, to see everything as in the above screenshot.
+The data field has a full-screen version, and two half-screen versions (top and bottom
+half). You can include the full-screen version on one data screen and both half-screen
+versions on another, if you'd like to see everything as in the above screenshot.
 
 ### Full-screen
 
-From top to bottom:
+From top to bottom and left to right:
 
-- **heart rate** in bpm.
-- **target** - target pace for current segment in minutes per km.
-- **segment** - average pace over current segment so far.
-- **pace** - current pace.
-- **Race progress bar** - distance progress bar of the course, with a marker at the
-  current position and each segment coloured by its target pace: green when much
-  faster than the target average pace, red when much slower, and orange in between.
-- **Next waypoint name** the waypoint being run towards, i.e. the end of the
-  current segment.
+- **Heart rate** - heart rate in bpm.
+- **Target pace** - target pace for current segment in minutes per km.
+- **Segment pace** - average pace over current segment so far in minutes per km.
+- **Current pace** - current pace in minutes per km.
+- **Progress bar** - distance progress bar of the course, with a marker at the current
+  position and each segment coloured by its target pace: green when much faster than the
+  target average pace, red when much slower, and orange in between.
+- **Upcoming waypoint name** the name of the waypoint marking the end of the current
+  segment.
 - **Segment remaining distance** - distance to the next waypoint. Counts down, and can
   go negative if GPS distance (due to error or otherwise) in the segment grows larger
   than the expected segment length before reaching the next waypoint. If it goes
@@ -53,17 +54,17 @@ From top to bottom:
 
 Before the activity has been started, the waypoint name, progress bar, remaining
 distance, and target pace will cycle through the different segments showing the entire
-planned course. This can be used to verify paces and distances were configured correctly
-before actually starting the race.
+planned course. This can be used to verify that paces and distances were configured
+correctly ahead of time.
 
 ### Half-screen (top half)
 
-- **projected finish at target pace**: finishing time if the rest of the race is run at
+- **Projected finish at target pace**: finishing time if the rest of the race is run at
   target paces, and whether this is ahead or behind the original target finishing time
 
 ### Half-screen (bottom half)
 
-- **projected finish time at current performance ratio**: finishing time if the rest of
+- **Projected finish time at current performance ratio**: finishing time if the rest of
   the race is run at the same fraction of target pace as you are currently running
   (measured as an exponential moving average with a scale of the configured
   `perf_ratio_scale`, 500 m by default, i.e. based on your performance over the last
@@ -125,8 +126,10 @@ averaging scale config parameters.
 `make segments` to plot the course with the gates overlaid and the elevation profile
 (saved to `out/course_gates.png` and `out/course_elevation.png`) to check they are sane.
 
-setup bits and bobs
--------------------
+Setup 
+-----
+
+Not comprehensive setup instructions, just some scattered notes:
 
 You'll need to install Garmin's Connect IQ SDK manager, make a developer account, and
 use the SDK manager to install the SDK for your device.
@@ -134,7 +137,7 @@ use the SDK manager to install the SDK for your device.
 The course pipeline needs Python with `numpy` (and matplotlib if running
 `plot_segments.py`)
 
-Make developer key:
+You need to make a developer key:
 
 ```bash
 mkdir .secrets
@@ -142,17 +145,20 @@ openssl genrsa -out .secrets/developer_key.pem 4096
 openssl pkcs8 -topk8 -inform PEM -outform DER -in .secrets/developer_key.pem -out .secrets/developer_key.der -nocrypt
 ```
 
-Get exact device ID for device from device folder name:
+To add support for a device, get exact device ID for device from device folder name and
+add this to `manifest.xml`
 
 ```bash
 $ ls ~/.Garmin/ConnectIQ/Devices/
 venu441mm
 ```
 
-Memory and resolution limits etc are in
+Memory and resolution limits etc are in e.g.
 `~/.Garmin/ConnectIQ/Devices/venu441mm/compiler.json`
 
-patchelf to force simulator to use newer libs (may need to do this for the SDK manager as well):
+Use `patchelf` to force simulator to use newer libs (may need to do this for the SDK
+manager GUI as well):
+
 ```bash
 cd ~/.Garmin/ConnectIQ/Sdks/connectiq-sdk-lin-9.2.0-2026-06-09-92a1605b2/bin/
 patchelf --replace-needed libwebkit2gtk-4.0.so.37 libwebkit2gtk-4.1.so.0 simulator
@@ -160,7 +166,7 @@ patchelf --replace-needed libjavascriptcoregtk-4.0.so.18 libjavascriptcoregtk-4.
 patchelf --replace-needed libsoup-2.4.so.1 libsoup-3.0.so.0 simulator
 ```
 
-build commands
+Build commands
 --------------
 
 Build, writing `bin/PuffingBilly-venu441mm.prg`:
@@ -169,68 +175,59 @@ Build, writing `bin/PuffingBilly-venu441mm.prg`:
 make
 ```
 
-Regenerate the course data in `out/` from `config.toml` and the `.gpx` track,
-without building. A build does this for you when it needs to, so you only need
-it on its own for the pacing table it prints, or before `plot_segments.py`:
-
+Regenerate the course data in `out/` from `config.toml` and the `.gpx` track. A build
+does this for you when it needs to, so you only need it on its own for the pacing table
+it prints, or before running `plot_segments.py`:
 ```bash
 make segments
 ```
 
 Run the simulator. Blocks, so give it its own terminal:
-
 ```bash
 make sim
 ```
 
-Build and load into the already-running simulator. Errors out if the simulator
-isn't up:
-
+Build and load into the already-running simulator.
 ```bash
 make run
 ```
 
 Sideload to the watch. Plug it in over USB and let gvfs mount it (MTP) first:
-
 ```bash
 make deploy
 ```
 
 Build a signed `.iq` bundle for the store, covering every product in the
 manifest rather than just one:
-
 ```bash
 make package
 ```
 
 Delete `bin/`:
-
 ```bash
 make clean
 ```
 
 `DEVICE`, `KEY`, `TYPECHECK` (monkeyc `-l`, 0-3) and `SDK_ROOT` can be
 overridden per invocation:
-
 ```bash
 make run DEVICE=venu445mm
 make build TYPECHECK=0
 ```
 
-source
+Source
 ------
 
 Brief summary of what each file in `source/` is for:
 
 - `PuffingBillyApp.mc` - minimal boilerplate app shell.
-- `PuffingBillyField.mc` - the data field, including its callbacks and drawing
-- `Course.mc` - the segments, their target paces and their gates, read from the
+- `PuffingBillyField.mc` - main data field class, including its callbacks and drawing.
+- `Course.mc` - segments, target paces, waypoint gate coordinates, read from the
   compiled-in JSON resource, plus the line-crossing test against a gate.
 - `Race.mc` - the race in progress: which segment is being run, how far and how long
-  into it, how hard it is being run against the plan, and the two projected finishes.
-- `Layout.mc` - the vertical rhythm, solved whenever the screen region the field has
-  been given changes, and read on every draw.
-- `Face.mc` - the round display, where the field has been placed on it, and the circle
-  left once the bezel clearance is taken off.
-- `Roboto.mc` - the glyph metrics the Graphics API doesn't report.
-- `Fmt.mc` - string formatting of paces, durations and standings
+  into it, performance ratio, projected finishing time.
+- `Layout.mc` - vertical layout calculations.
+- `Face.mc` - watch-face geometry and details of the screen region the field has been
+  assigned.
+- `Roboto.mc` - glyph metrics for the font we use.
+- `Fmt.mc` - string formatting of paces, durations and time ahead/behind.
