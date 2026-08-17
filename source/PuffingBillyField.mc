@@ -27,16 +27,20 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Integer, used as a divisor on each colour channel.
     private const DIM = 2;
 
-    //! How long the target pace is drawn in its segment's colour on entering a
-    //! new segment, and how much of that it holds at full strength before
-    //! fading back, both in seconds.
+    //! How long the target pace is highlighted for on entering a new segment,
+    //! in seconds.
     private const HIGHLIGHT_S = 10.0;
-    private const HIGHLIGHT_HOLD_S = 6.0;
 
-    //! How far that colour is mixed towards the foreground before it is used.
-    //! Takes the segment colours to about 9:1 against their background, the
-    //! weight the labels and standings are set at.
+    //! How far the segment's colour is mixed towards the foreground before the
+    //! highlight is drawn in it. Takes the segment colours to about 9:1 against
+    //! their background, the weight the labels and standings are set at.
     private const HIGHLIGHT_LIFT = 0.45;
+
+    //! The margin around the target pace label inside its pill, as fractions of
+    //! the label font's height. The pill's corner radius is a quarter of its
+    //! own height.
+    private const PILL_MARGIN_X = 0.3;
+    private const PILL_MARGIN_Y = 0.1;
 
     //! Labels and rules, in a slate blue a few stops down from the foreground:
     //! enough contrast to read when looked at, little enough that the eye goes
@@ -186,18 +190,42 @@ class PuffingBillyField extends WatchUi.DataField {
             mixChannel(from & 0xFF, to & 0xFF, t);
     }
 
-    //! How far the target pace is drawn towards its segment's colour: 1 for the
-    //! first HIGHLIGHT_HOLD_S of a segment, falling to 0 at HIGHLIGHT_S, and 0
+    //! Whether the segment being run started less than HIGHLIGHT_S ago. False
     //! while previewing.
-    private function highlight() as Float {
+    private function highlighted() as Boolean {
         var age = _race.segmentAgeS();
-        if (age == null || age >= HIGHLIGHT_S) {
-            return 0.0;
-        }
-        if (age <= HIGHLIGHT_HOLD_S) {
-            return 1.0;
-        }
-        return (HIGHLIGHT_S - age) / (HIGHLIGHT_S - HIGHLIGHT_HOLD_S);
+        return age != null && age < HIGHLIGHT_S;
+    }
+
+    //! The pill drawn behind the pace label centred on x, sized to that label's
+    //! ink and margin.
+    private function drawPill(
+        dc as Dc, w as Number, x as Number, label as String, colour as Number
+    ) as Void {
+        var font = Graphics.FONT_XTINY;
+        var fontH = Graphics.getFontHeight(font);
+        var up = Roboto.inkUp(font);
+        var marginY = PILL_MARGIN_Y * fontH;
+
+        var h = up + Roboto.inkDown(font) + 2.0 * marginY;
+        var top = Roboto.baselineAt(_layout.yPaceLabel, font) - up - marginY;
+        var radius = h / 4.0;
+
+        // Cut back to what the inset leaves at the highest row the pill is at
+        // full width on, which is the narrowest of them.
+        var half = dc.getTextWidthInPixels(label, font) / 2.0
+            + PILL_MARGIN_X * fontH;
+        var offset = x - w / 2;
+        if (offset < 0) { offset = -offset; }
+        var limit = _face.halfWidthAt((top + radius + 0.5).toNumber()) - offset;
+        if (half > limit) { half = limit; }
+
+        dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
+        dc.fillRoundedRectangle(
+            (x - half + 0.5).toNumber(), (top + 0.5).toNumber(),
+            (2.0 * half + 0.5).toNumber(), (h + 0.5).toNumber(),
+            (radius + 0.5).toNumber()
+        );
     }
 
     //! A horizontal divider at y, spanning the middle three fifths of what is
@@ -356,8 +384,8 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Draw the full-screen field: the heart rate, the three paces, the course bar,
     //! and the waypoint being run towards with the distance still to it.
     private function drawFullScreenField(
-        dc as Dc, w as Number, fg as Number, labelColour as Number,
-        nameColour as Number, dark as Boolean
+        dc as Dc, w as Number, bg as Number, fg as Number,
+        labelColour as Number, nameColour as Number, dark as Boolean
     ) as Void {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         var segment = _race.segment();
@@ -377,13 +405,13 @@ class PuffingBillyField extends WatchUi.DataField {
             _course.paceS(segment), _race.segmentPaceS(), _race.currentPaceS()
         ] as Array<Float?>;
 
-        // The target pace column takes the colour the segment is drawn in on
-        // the bar, lifted towards the foreground, for the first HIGHLIGHT_S of
-        // the segment. The other two columns are drawn at a mix of zero, which
-        // leaves them their own colours.
-        var lit = highlight();
+        // For the first HIGHLIGHT_S of a segment the target pace takes the
+        // colour that segment is drawn in on the bar, lifted towards the
+        // foreground, and its label is reversed out of a pill in the same
+        // colour.
+        var lit = highlighted();
         var accent = fg;
-        if (lit > 0.0) {
+        if (lit) {
             accent = blend(
                 segmentColour(_course.paceS(segment)), fg, HIGHLIGHT_LIFT
             );
@@ -391,14 +419,17 @@ class PuffingBillyField extends WatchUi.DataField {
 
         for (var i = 0; i < paces.size(); i += 1) {
             var x = (w / 2 + (i - 1) * _layout.paceColumn).toNumber();
-            var toAccent = (i == 0) ? lit : 0.0;
+            var target = lit && i == 0;
+            if (target) {
+                drawPill(dc, w, x, _paceLabels[i], accent);
+            }
             dc.setColor(
-                blend(labelColour, accent, toAccent), Graphics.COLOR_TRANSPARENT
+                target ? bg : labelColour, Graphics.COLOR_TRANSPARENT
             );
             dc.drawText(
                 x, _layout.yPaceLabel, Graphics.FONT_XTINY, _paceLabels[i], centre
             );
-            dc.setColor(blend(fg, accent, toAccent), Graphics.COLOR_TRANSPARENT);
+            dc.setColor(target ? accent : fg, Graphics.COLOR_TRANSPARENT);
             dc.drawText(
                 x, _layout.yPaceValue, _layout.figureFont,
                 Fmt.pace(paces[i]), centre
@@ -470,7 +501,7 @@ class PuffingBillyField extends WatchUi.DataField {
         if (_layout.half) {
             drawHalfScreenField(dc, w, fg, labelColour, dark);
         } else {
-            drawFullScreenField(dc, w, fg, labelColour, nameColour, dark);
+            drawFullScreenField(dc, w, bg, fg, labelColour, nameColour, dark);
         }
     }
 }

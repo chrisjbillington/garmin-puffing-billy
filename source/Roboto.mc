@@ -61,4 +61,11 @@ module Roboto {
         return (baseline + Graphics.getFontHeight(font) / 2.0
                 - Graphics.getFontAscent(font) + 0.5).toNumber();
     }
+
+    //! Where the baseline of a row drawn at y falls. The inverse of
+    //! yForBaseline().
+    function baselineAt(y as Number, font as FontType) as Float {
+        return y - Graphics.getFontHeight(font) / 2.0
+            + Graphics.getFontAscent(font);
+    }
 }
