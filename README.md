@@ -68,9 +68,9 @@ correctly ahead of time.
 
 - **Projected finish time at current performance ratio**: finishing time if the rest of
   the race is run at the same fraction of target pace as you are currently running
-  (measured as an exponential moving average with a scale of the configured
-  `perf_ratio_scale`, 500 m by default, i.e. based on your performance over the last
-  0.5–1 km or so)
+  (measured as an exponential moving average with distance scale equal to the configured
+  `perf_ratio_scale`, 250 m by default, i.e. based on your performance over the last
+  250–500 m or so)
 
 Waypoint description
 --------------------

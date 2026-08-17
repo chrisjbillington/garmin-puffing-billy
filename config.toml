@@ -34,17 +34,17 @@
 # ]
 
 # The average pace you would run the course at if it were flat
-flat_pace = "4:45"
+flat_pace = "4:50"
 
-# The fractional difference in pace of the second half of an equivalent flat course with
-# respect to the first half, describing a linear ramp in pace, i.e. -0.01 is what is
-# usually referred to as a "1% negative split"
+# The fractional difference in pace between the second and first half of an equivalent
+# flat course with a linear ramp in pace, i.e. -0.01 is what is usually referred to as a
+# "1% negative split"
 split_delta = -0.01
 
 # The fractional slowdown and speedup from flat pace per unit of average grade, (i.e.
 # percent change in pace per percentage point of grade).
-uphill_penalty = 5
-downhill_bonus = 1.75
+uphill_penalty = 4.25
+downhill_bonus = 2.50
 
 
 [tracking]
@@ -58,4 +58,4 @@ overdistance = 200
 
 # Averaging length scale in metres for the performance ratio - how fast one is running
 # as a fraction of target, used for one of the finishing time projections
-perf_ratio_scale = 500
+perf_ratio_scale = 250
