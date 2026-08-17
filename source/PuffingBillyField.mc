@@ -27,6 +27,17 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Integer, used as a divisor on each colour channel.
     private const DIM = 2;
 
+    //! How long the target pace is drawn in its segment's colour on entering a
+    //! new segment, and how much of that it holds at full strength before
+    //! fading back, both in seconds.
+    private const HIGHLIGHT_S = 10.0;
+    private const HIGHLIGHT_HOLD_S = 6.0;
+
+    //! How far that colour is mixed towards the foreground before it is used.
+    //! Takes the segment colours to about 9:1 against their background, the
+    //! weight the labels and standings are set at.
+    private const HIGHLIGHT_LIFT = 0.45;
+
     //! Labels and rules, in a slate blue a few stops down from the foreground:
     //! enough contrast to read when looked at, little enough that the eye goes
     //! to the numbers rather than to what they are called. The upcoming
@@ -159,6 +170,34 @@ class PuffingBillyField extends WatchUi.DataField {
         return ((((colour >> 16) & 0xFF) / DIM) << 16) |
             ((((colour >> 8) & 0xFF) / DIM) << 8) |
             ((colour & 0xFF) / DIM);
+    }
+
+    //! One channel of `from` mixed `t` of the way towards `to`.
+    private function mixChannel(
+        from as Number, to as Number, t as Float
+    ) as Number {
+        return (from + (to - from) * t).toNumber();
+    }
+
+    //! `from` mixed `t` of the way towards `to`, channel by channel.
+    private function blend(from as Number, to as Number, t as Float) as Number {
+        return (mixChannel((from >> 16) & 0xFF, (to >> 16) & 0xFF, t) << 16) |
+            (mixChannel((from >> 8) & 0xFF, (to >> 8) & 0xFF, t) << 8) |
+            mixChannel(from & 0xFF, to & 0xFF, t);
+    }
+
+    //! How far the target pace is drawn towards its segment's colour: 1 for the
+    //! first HIGHLIGHT_HOLD_S of a segment, falling to 0 at HIGHLIGHT_S, and 0
+    //! while previewing.
+    private function highlight() as Float {
+        var age = _race.segmentAgeS();
+        if (age == null || age >= HIGHLIGHT_S) {
+            return 0.0;
+        }
+        if (age <= HIGHLIGHT_HOLD_S) {
+            return 1.0;
+        }
+        return (HIGHLIGHT_S - age) / (HIGHLIGHT_S - HIGHLIGHT_HOLD_S);
     }
 
     //! A horizontal divider at y, spanning the middle three fifths of what is
@@ -338,13 +377,28 @@ class PuffingBillyField extends WatchUi.DataField {
             _course.paceS(segment), _race.segmentPaceS(), _race.currentPaceS()
         ] as Array<Float?>;
 
+        // The target pace column takes the colour the segment is drawn in on
+        // the bar, lifted towards the foreground, for the first HIGHLIGHT_S of
+        // the segment. The other two columns are drawn at a mix of zero, which
+        // leaves them their own colours.
+        var lit = highlight();
+        var accent = fg;
+        if (lit > 0.0) {
+            accent = blend(
+                segmentColour(_course.paceS(segment)), fg, HIGHLIGHT_LIFT
+            );
+        }
+
         for (var i = 0; i < paces.size(); i += 1) {
             var x = (w / 2 + (i - 1) * _layout.paceColumn).toNumber();
-            dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
+            var toAccent = (i == 0) ? lit : 0.0;
+            dc.setColor(
+                blend(labelColour, accent, toAccent), Graphics.COLOR_TRANSPARENT
+            );
             dc.drawText(
                 x, _layout.yPaceLabel, Graphics.FONT_XTINY, _paceLabels[i], centre
             );
-            dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
+            dc.setColor(blend(fg, accent, toAccent), Graphics.COLOR_TRANSPARENT);
             dc.drawText(
                 x, _layout.yPaceValue, _layout.figureFont,
                 Fmt.pace(paces[i]), centre

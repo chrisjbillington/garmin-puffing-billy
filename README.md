@@ -38,7 +38,9 @@ versions on another, if you'd like to see everything as in the above screenshot.
 From top to bottom and left to right:
 
 - **Heart rate** - heart rate in bpm.
-- **Target pace** - target pace for current segment in minutes per km.
+- **Target pace** - target pace for current segment in minutes per km. After advancing
+  to a new segment, the new target pace is highlighted in the segment's colour from the
+  progress bar.
 - **Segment pace** - average pace over current segment so far in minutes per km.
 - **Current pace** - current pace in minutes per km.
 - **Progress bar** - distance progress bar of the course, with a marker at the current

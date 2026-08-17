@@ -191,6 +191,15 @@ class Race {
         return _distanceM - _segmentStartM;
     }
 
+    //! Time since the start of the current segment, in seconds. Null while
+    //! previewing.
+    function segmentAgeS() as Float? {
+        if (_previewing) {
+            return null;
+        }
+        return (_elapsedMs - _segmentStartMs) / MS_PER_S;
+    }
+
     //! Distance still to run in segment i, in metres. Goes negative once the
     //! runner is past where the gate should have been but has not yet crossed
     //! it — which is the normal case for a metre or two, since the odometer and
