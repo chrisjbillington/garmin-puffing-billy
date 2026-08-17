@@ -72,6 +72,27 @@ correctly ahead of time.
   `perf_ratio_scale`, 500 m by default, i.e. based on your performance over the last
   0.5–1 km or so)
 
+Waypoint description
+--------------------
+
+![course gates](course_gates.png)
+
+![course elevation](course_elevation.png)
+
+The default waypoints are:
+
+| distance into course   | name    | description                                                                          |
+| :--------- | :------------------ | :----------------------------------------------------------------------------------- |
+|  1.200 km  | Trestle Bridge Bend | Bend after which the Trestle Bridge comes into view                                  |
+|  2.500 km  | Selby               | Selby township                                                                       |
+|  3.260 km  | Aura Rd Crossing    | Where the railway crosses the course on Selby-Aura Rd                                |
+|  5.025 km  | Old Menzies Ck Rd   | Corner at Old Menzies Ck Rd where the course turns to stay on Selby-Aura Rd          |
+|  6.590 km  | Menzies Ck Crossing | Where the railway crosses the course in Menzies Ck township                          |
+|  7.340 km  | Menzies Rd Crest    | Local elevation maximum of the course on Menzies Rd                                  |
+|  7.830 km  | Clematis Crossing   | Where the railway and course both cross Belgrave-Gembrook Rd in parallel in Clematis |
+|  8.700 km  | Clematis Pub        | About 100 metres after the course passes Clematis Pub                                |
+| 10.260 km  | Emerald Crossing    | Where the railway crosses the course after Emerald Railway Station                   |
+| 13.613 km  | Lakeside            | Finish line at Emerald Lake                                                          |
 
 Configuration
 -------------
@@ -95,12 +116,8 @@ calculated from the per-segment paces. You can run `make_segments.py` to see the
 per-segment paces and implied total time.
 
 The official course `.gpx` for 2026 is in this repo as `official-course-2026.gpx`, and
-is used to extract segment grades. The default segmentation results in the below
-segments:
-
-![course elevation](course_elevation.png)
-
-![course gates](course_gates.png)
+is used to extract segment grades. The default segmentation results in the grades shown
+in the course elevation plot above.
 
 If you change the waypoints, you will want to verify that the waypoint gates (red line
 segments in the image above) don't intersect the course at any point earlier than the

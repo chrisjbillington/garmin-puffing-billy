@@ -10,14 +10,14 @@
 # there are switchback sections), which would trigger end-of-segment detection
 # prematurely
 
-"Trestle Bridge Bend" = 1.150
+"Trestle Bridge Bend" = 1.200
 "Selby" = 2.500
-"Aura Rd Crossing" = 3.250
+"Aura Rd Crossing" = 3.260
 "Old Menzies Ck Rd" = 5.025
 "Menzies Ck Crossing" = 6.590
-"Menzies Rd Crest" = 7.350
-"Clematis Crossing" = 7.850
-"Clematis Pub" = 8.750
+"Menzies Rd Crest" = 7.340
+"Clematis Crossing" = 7.830
+"Clematis Pub" = 8.700
 "Emerald Crossing" = 10.260
 "Lakeside" = 13.613
 
