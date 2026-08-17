@@ -110,13 +110,12 @@ Going through the pipeline, which `make` runs for you whenever it is out of date
 
 `make_segments.py` locates each waypoint along the `.gpx` track, fits the course heading
 there, and builds the 200 m "gate" normal to that heading which the runner passes
-through - see the waypoint crossing section below. It also computes each segment's
-average grade from the track elevation, and, unless the paces are given per segment,
-grade-adjusts the flat pace the split delta calls for at that point in the course to get
-the segment's target pace. These results are saved in detail to `out/segments.json`for
-use by `plot_segments.py`, and in the more minimal form needed by the watch as
-`out/resource.json`, and it prints a per-segment pacing table plus the predicted total
-time.
+through. It also computes each segment's average grade from the track elevation, and,
+unless the paces are given per segment, grade-adjusts the flat pace at that point in the
+course to get the segment's target pace. These results are saved in detail to
+`out/segments.json`for use by `plot_segments.py`, and in more minimal form to
+`out/resource.json` as needed by the watch. A per-segment pacing table and the predicted
+total time are also printed.
 
 `out/resource.json` is the data actually included on the watch: segment names, lengths,
 and target paces, the gate coordinates, and the overdistance and performance ratio
@@ -124,7 +123,8 @@ averaging scale config parameters.
 
 `plot_segments.py` is not part of the `make` pipeline, but can be run manually after
 `make segments` to plot the course with the gates overlaid and the elevation profile
-(saved to `out/course_gates.png` and `out/course_elevation.png`) to check they are sane.
+(saved to `out/course_gates.png` and `out/course_elevation.png`) to check that they are
+sane.
 
 Setup 
 -----
