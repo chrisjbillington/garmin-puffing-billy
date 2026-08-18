@@ -12,6 +12,7 @@ DEVICE    ?= venu441mm
 KEY       ?= .secrets/developer_key.der
 NAME      ?= PuffingBilly
 TYPECHECK ?= 3
+PYTHON    ?= python3
 
 OUT := bin
 PRG := $(OUT)/$(NAME)-$(DEVICE).prg
@@ -27,7 +28,7 @@ SOURCES := manifest.xml monkey.jungle $(RESOURCE) \
 
 MONKEYC := $(BIN)/monkeyc -f monkey.jungle -y $(KEY) -w -l $(TYPECHECK)
 
-.PHONY: all build run sim deploy package clean check segments
+.PHONY: all build run sim deploy package clean check segments plots
 
 all: build
 
@@ -39,9 +40,15 @@ check:
 # make_segments.py writes segments.json alongside resource.json; the one named
 # here stands for both.
 $(RESOURCE): $(COURSE)
-	python make_segments.py
+	$(PYTHON) make_segments.py
 
 segments: $(RESOURCE)
+
+# Regenerate the course plots in out/ and refresh the copies of them embedded
+# in README.md. MPLBACKEND=Agg so no plot window opens.
+plots: $(RESOURCE)
+	MPLBACKEND=Agg $(PYTHON) plot_segments.py
+	cp out/course_gates.png out/course_elevation.png .
 
 build: check $(PRG)
 
@@ -73,5 +80,6 @@ deploy: build
 	test -d "$$apps" || { echo "Watch not mounted at $$apps"; exit 1; }; \
 	gio copy "$(PRG)" "$$apps/$(notdir $(PRG))" && echo "-> $$apps/$(notdir $(PRG))"
 
+# Delete bin/ and the generated course data in out/.
 clean:
-	rm -rf $(OUT)
+	rm -rf $(OUT) out

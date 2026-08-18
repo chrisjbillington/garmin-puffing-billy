@@ -122,8 +122,7 @@ in the course elevation plot above.
 If you change the waypoints, you will want to verify that the waypoint gates (red line
 segments in the image above) don't intersect the course at any point earlier than the
 waypoint itself, otherwise this will trigger premature detection of reaching the
-waypoint. You can do this by running `plot_segments.py` after `make_segments.py` has
-run.
+waypoint. You can do this by running `make plots`.
 
 Going through the pipeline, which `make` runs for you whenever it is out of date:
 
@@ -140,10 +139,10 @@ total time are also printed.
 and target paces, the gate coordinates, and the overdistance and performance ratio
 averaging scale config parameters.
 
-`plot_segments.py` is not part of the `make` pipeline, but can be run manually after
-`make segments` to plot the course with the gates overlaid and the elevation profile
+`plot_segments.py` plots the course with the gates overlaid and the elevation profile
 (saved to `out/course_gates.png` and `out/course_elevation.png`) to check that they are
-sane.
+sane. `make plots` runs it (regenerating the segments first if needed) and refreshes the
+copies of the plots embedded in this README.
 
 Setup 
 -----
@@ -201,6 +200,12 @@ it prints, or before running `plot_segments.py`:
 make segments
 ```
 
+Regenerate the course plots in `out/` and refresh the copies of them embedded in this
+README:
+```bash
+make plots
+```
+
 Run the simulator. Blocks, so give it its own terminal:
 ```bash
 make sim
@@ -222,12 +227,12 @@ manifest rather than just one:
 make package
 ```
 
-Delete `bin/`:
+Delete `bin/` and the generated course data in `out/`:
 ```bash
 make clean
 ```
 
-`DEVICE`, `KEY`, `TYPECHECK` (monkeyc `-l`, 0-3) and `SDK_ROOT` can be
+`DEVICE`, `KEY`, `TYPECHECK` (monkeyc `-l`, 0-3), `PYTHON` and `SDK_ROOT` can be
 overridden per invocation:
 ```bash
 make run DEVICE=venu445mm
