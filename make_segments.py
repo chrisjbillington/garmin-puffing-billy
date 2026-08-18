@@ -272,6 +272,11 @@ def make_segments(config):
     for i, (name, distance_km) in enumerate(waypoints.items()):
         distance = distance_km * km
         length = distance - distance_prev
+        if length <= 0:
+            raise ValueError(
+                f"config.toml waypoint distances must be increasing: {name} at "
+                f"{distance / km:.3f} km is not past {distance_prev / km:.3f} km"
+            )
         distance_prev = distance
         if round(distance) > round(track_length):
             print(
@@ -322,7 +327,9 @@ def make_segments(config):
         print(f"Difficulty factor: {avg_pace/flat_pace:.3f}")
 
     print()
-    SEGMENTS_FILE.write_text(json.dumps(segments, indent=4), 'utf8')
+    # allow_nan=False so that a gpx file with missing elevations fails here,
+    # rather than NaN grades and paces being written out as invalid JSON.
+    SEGMENTS_FILE.write_text(json.dumps(segments, indent=4, allow_nan=False), 'utf8')
     print(f"Wrote {SEGMENTS_FILE}")
     return segments
 
@@ -360,7 +367,7 @@ def make_resource(segments, tracking):
         "perf_ratio_scale": round(tracking["perf_ratio_scale"]),
     }
 
-    RESOURCE_FILE.write_text(json.dumps(resource, indent=4), 'utf8')
+    RESOURCE_FILE.write_text(json.dumps(resource, indent=4, allow_nan=False), 'utf8')
     print(f"Wrote {RESOURCE_FILE}")
 
 
