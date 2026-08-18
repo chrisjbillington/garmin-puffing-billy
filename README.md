@@ -122,7 +122,8 @@ in the course elevation plot above.
 If you change the waypoints, you will want to verify that the waypoint gates (red line
 segments in the image above) don't intersect the course at any point earlier than the
 waypoint itself, otherwise this will trigger premature detection of reaching the
-waypoint. You can do this by running `make plots`.
+waypoint. You can do this by running `plot_segments.py` after `make segments` has run,
+which shows the plots interactively so you can zoom in to check.
 
 Going through the pipeline, which `make` runs for you whenever it is out of date:
 
@@ -141,8 +142,9 @@ averaging scale config parameters.
 
 `plot_segments.py` plots the course with the gates overlaid and the elevation profile
 (saved to `out/course_gates.png` and `out/course_elevation.png`) to check that they are
-sane. `make plots` runs it (regenerating the segments first if needed) and refreshes the
-copies of the plots embedded in this README.
+sane. Run it directly (after `make segments`) for interactive plots you can zoom in on;
+`make plots` runs it headlessly and refreshes the copies of the plots embedded in this
+README.
 
 Setup 
 -----
