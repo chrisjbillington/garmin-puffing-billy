@@ -318,7 +318,7 @@ def make_segments(config):
 
     print()
     total_time = sum(seg['pace'] * (seg['length'] / km) for seg in segments.values())
-    avg_pace = total_time / (track_length / km)
+    avg_pace = total_time / (course_length / km)
 
     print(f"       Total time: {format_pace(total_time)}")
     print(f"     Average pace: {format_pace(avg_pace)}/km")
