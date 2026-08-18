@@ -361,7 +361,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var finish = lower ? _race.perfRatioFinishS() : _race.targetFinishS();
 
         var off = finish - _course.planS;
-        var colour = (off < 0.0)
+        var colour = Fmt.ahead(off)
             ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
             : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
 
