@@ -221,7 +221,7 @@ def label_grades(ax, segment_distance, segment_ele, segment_grade):
             (x0 + x1) / 2 / km,
             (y0 + y1) / 2,
             f"{g / percent:+.1f}%".replace('-', '−'),
-            rotation=np.atan2(y1 - y0, (x1 - x0) / km) * 180 / np.pi,
+            rotation=np.arctan2(y1 - y0, (x1 - x0) / km) * 180 / np.pi,
             transform_rotates_text=True,
             rotation_mode="anchor",
             ha="center",
