@@ -1,7 +1,7 @@
 Garmin Puffing Billy race data field
 ------------------------------------
 
-A data field for pacing in the 13.5km Puffing Billy Running Festival 13.5 km classic,
+A data field for pacing in the Puffing Billy Running Festival 13.5 km classic,
 with the course split into segments, each with its own target pace. This is useful
 because PacePro does a poor job with segmenting hilly courses, particularly this one,
 for which Garmin seems to have overly smoothed elevation data.
@@ -97,7 +97,7 @@ The default waypoints are:
 Configuration
 -------------
 
-Desired segments and and target pacing is configured in `config.toml`, see there for
+Desired segments and target pacing is configured in `config.toml`, see there for
 details. It has three sections:
 
 - `[waypoints]` - name and distance into the course of the waypoints marking the
@@ -132,7 +132,7 @@ there, and builds the 200 m "gate" normal to that heading which the runner passe
 through. It also computes each segment's average grade from the track elevation, and,
 unless the paces are given per segment, grade-adjusts the flat pace at that point in the
 course to get the segment's target pace. These results are saved in detail to
-`out/segments.json`for use by `plot_segments.py`, and in more minimal form to
+`out/segments.json` for use by `plot_segments.py`, and in more minimal form to
 `out/resource.json` as needed by the watch. A per-segment pacing table and the predicted
 total time are also printed.
 
