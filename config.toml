@@ -58,4 +58,4 @@ overdistance = 200
 
 # Averaging length scale in metres for the performance ratio - how fast one is running
 # as a fraction of target, used for one of the finishing time projections
-perf_ratio_scale = 250
+perf_ratio_scale = 500

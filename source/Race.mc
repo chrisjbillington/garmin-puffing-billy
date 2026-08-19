@@ -19,6 +19,11 @@ class Race {
     //! actual data
     private const PACE_SEED_M = 1.0;
 
+    //! Slowest speed that counts toward the performance ratio: 10 minutes per
+    //! km, the same bound past which paces are shown blank. Updates slower
+    //! than this leave the ratio untouched.
+    private const MIN_RACING_SPEED_MPS = M_PER_KM / 600.0;
+
     private var _course as Course;
 
     //! Index of the gate being watched for, so equal to the segment count once
@@ -146,12 +151,17 @@ class Race {
         var t = info.elapsedTime;
         var d = info.elapsedDistance;
 
-        // Before the odometer and the clock are moved on, and before any gate
-        // is crossed, so that the step just taken is charged to the segment it
-        // was run in. A second the watch has no reading for leaves both where
-        // they are, and the step it belonged to is folded into the next one.
         if (t != null && d != null) {
-            accumulate(d - _distanceM, (t - _elapsedMs) / MS_PER_S);
+            var v = speedMps;
+            if (v != null && v >= MIN_RACING_SPEED_MPS) {
+                // Update performance ratio average. This is done before checking if
+                // we've passed through a gate, and so if we just crossed one, uses the
+                // target pace of the previous segment (which is kind of arbitrary since
+                // the waypoint was passed at some random time within the last timestep,
+                // but makes sense since the user hasn't seen the new target pace yet).
+                var dt = (t - _elapsedMs) / MS_PER_S;
+                accumulate(v * dt, dt);
+            }
             _distanceM = d;
             _elapsedMs = t;
         }
@@ -251,8 +261,8 @@ class Race {
     }
 
     //! The finish time the race is on for if the rest of it is run at the
-    //! fraction of target pace the last PACE_WINDOW_M has been run at, applied
-    //! to every segment still to come.
+    //! fraction of target pace the last perfRatioScaleM metres have been run
+    //! at, applied to every segment still to come.
     function perfRatioFinishS() as Float {
         return _elapsedMs / MS_PER_S + _takenS / _allowedS * planRemainingS();
     }
