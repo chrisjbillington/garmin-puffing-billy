@@ -2,26 +2,23 @@ import Toybox.Lang;
 import Toybox.Math;
 import Toybox.System;
 
-//! The round display, and where on it the field has been placed.
+//! The round display, and the field's placement on it.
 //!
-//! A field given only part of the display sits off the middle of the circle, so
-//! it is the display and this placing, not the field's own box, that say how
-//! much width a row has. Every data field layout on this face is full width, so
-//! the field's horizontal middle is the circle's and only y is offset.
+//! A field given part of the display is off-centre, so the width available
+//! at a row comes from the display size and this placement, not from the
+//! field's own box. Every layout is full width, so only y is offset.
 class Face {
 
-    //! Clearance kept from the edge of the display. The watch shifts the whole
-    //! display by a few pixels every so often to spare the panel from burn-in,
-    //! and whatever it shifts towards goes under the bezel — so nothing may be
-    //! drawn hard against the edge.
+    //! Clearance kept from the edge of the display. The watch periodically
+    //! shifts the whole display by a few pixels to limit burn-in, which
+    //! occludes regions close to the edge.
     private const SAFE_INSET = 10;
 
     //! The display, in pixels.
     var w as Number;
     var h as Number;
 
-    //! The field's box: how far down the display its top sits, and how tall it
-    //! is. Set by place() and read-only thereafter.
+    //! Top and height of the field's box, in pixels.
     var offY as Number;
     var fieldH as Number;
 
@@ -33,15 +30,14 @@ class Face {
         fieldH = h;
     }
 
-    //! Record the box the watch has given the field.
+    //! Set the field's box.
     function place(top as Number, height as Number) as Void {
         offY = top;
         fieldH = height;
     }
 
-    //! Half the width available at height y down the field, inside the circle
-    //! the display leaves once SAFE_INSET is taken off it. Zero past that
-    //! circle's top and bottom.
+    //! Half the width available at y down the field, within the display circle
+    //! inset by SAFE_INSET. Zero above and below that circle.
     function halfWidthAt(y as Number) as Float {
         var r = w / 2 - SAFE_INSET;
         var dy = offY + y - h / 2;
@@ -49,14 +45,12 @@ class Face {
         if (dy >= r) {
             return 0.0;
         }
-        // toFloat() because sqrt() is typed as Float-or-Double, and a chord on
-        // a display this size has no need of the extra precision.
+        // sqrt() is typed as Float or Double.
         return Math.sqrt(r * r - dy * dy).toFloat();
     }
 
-    //! The same circle read the other way: how far from the middle of the
-    //! display a row reaching `half` pixels either side of centre may be drawn
-    //! and still clear the inset.
+    //! The inverse of halfWidthAt(): the maximum distance from the display's
+    //! centre for a row of half-width `half`, within the inset circle.
     function reachFor(half as Float) as Float {
         var r = w / 2 - SAFE_INSET;
         if (half >= r) {
@@ -65,21 +59,19 @@ class Face {
         return Math.sqrt(r * r - half * half).toFloat();
     }
 
-    //! Whether a row at y down the field sits above the middle of the display.
+    //! Whether a row at y down the field is above the middle of the display.
     function aboveCentre(y as Number) as Boolean {
         return offY + y < h / 2;
     }
 
-    //! Whether the field as a whole sits below the middle of the display, and
-    //! so whether the near end of its band — the end with width in it — is its
-    //! top or its bottom.
+    //! Whether the field's centre is below the display's centre, and so whether
+    //! the near end of its band — the wider end — is its top or its bottom.
     function belowCentre() as Boolean {
         return 2 * offY + fieldH > h;
     }
 
-    //! How far that near end already stands from the middle of the display.
-    //! Zero for a field that straddles the middle, which has its widest point
-    //! inside it rather than at an edge.
+    //! Distance from the middle of the display to the near end of the field's
+    //! band. Zero if the field contains the display's centre.
     function nearEdge() as Float {
         var d = belowCentre()
             ? offY - h / 2.0

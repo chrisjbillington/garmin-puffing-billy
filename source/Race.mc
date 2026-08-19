@@ -3,60 +3,47 @@ import Toybox.Attention;
 import Toybox.Lang;
 import Toybox.Math;
 
-//! The race in progress: which segment is being run, how far and how long into
-//! it, and how hard it is being run against the plan. Before the activity is
-//! started, the segment it reports cycles through the course instead.
+//! The race in progress: the current segment, distance and time into it, and
+//! actual pace as a fraction of target pace. Before the activity starts, the
+//! reported segment cycles through the course.
 class Race {
 
-    //! Distances are in metres and activity times in milliseconds, whereas
-    //! paces are per km and every projection is in seconds.
+    //! Distances are in metres, activity times in milliseconds, paces in
+    //! seconds per km, and projections in seconds.
     private const M_PER_KM = 1000.0;
     private const MS_PER_S = 1000.0;
 
-    //! Distance at initial target pace with which the performance ratio exponential
-    //! moving average is seeded. This is just to prevent division by zero, and doesn't
-    //! meaningfully affect early performance estimates which are still dominated by
-    //! actual data
+    //! Seed distance for the performance ratio exponential moving averages, at
+    //! the initial target pace. Prevents division by zero.
     private const PACE_SEED_M = 1.0;
 
-    //! Slowest speed that counts toward the performance ratio: 10 minutes per
-    //! km, the same bound past which paces are shown blank. Updates slower
-    //! than this leave the ratio untouched.
+    //! Slowest speed counted toward the performance ratio: 10 minutes per km,
+    //! matching the bound past which Fmt.pace() shows a placeholder.
     private const MIN_RACING_SPEED_MPS = M_PER_KM / 600.0;
 
     private var _course as Course;
 
-    //! Index of the gate being watched for, so equal to the segment count once
-    //! the last one has been crossed. Gates are tested one at a time and in
-    //! order — this is a race on a known course, and testing only the next one
-    //! is both cheaper and immune to a doubling-back section triggering a later
-    //! gate.
+    //! Index of the next gate to test, equal to the segment count once the last
+    //! gate has been crossed. Only this gate is tested each step.
     private var _next as Number;
 
-    //! Whether the activity is yet to be started, and, while it is, which
-    //! segment is reported as though it were at the start of it. The index
-    //! steps on by one with each reading, so every segment of the course is
-    //! shown in turn.
-    //!
-    //! Readings come once a second however often the face is drawn, so that is
-    //! the shortest a segment is on screen for. The index starts on the last
-    //! segment, so the first step comes round to the first.
+    //! Whether the activity has yet to start, and the segment displayed until
+    //! it does. The index advances by one per reading, so each segment shows
+    //! for one second in turn. It starts on the last segment, so the first
+    //! reading shows the first.
     private var _previewing as Boolean;
     private var _preview as Number;
 
-    //! The most recent fix, in degrees. Held from the last reading that had
-    //! one, not simply the last second, so that a GPS dropout leaves a longer
-    //! line to test against rather than a hole detection can fall through.
+    //! The most recent valid GPS fix, in degrees. After a dropout, the gate
+    //! crossing test spans from this fix to the new one.
     private var _lastLat as Double?;
     private var _lastLon as Double?;
 
     private var _distanceM as Float;
 
-    //! Odometer reading at the start of the current segment, so that the
-    //! distance still to run is measured from the last gate rather than from
-    //! the start of the race. The odometer drifts against the course — about
-    //! 1-2% on a real watch, far more under simulated GPS — and measuring each
-    //! segment fresh keeps that drift from compounding over thirteen km.
+    //! Odometer reading at the start of the current segment, so distance
+    //! remaining is measured from the last gate. The odometer differs from
+    //! course distance by 1-2% on a real watch and more under simulated GPS.
     private var _segmentStartM as Float;
 
     //! Elapsed time, in milliseconds, and its reading at the start of the
@@ -64,17 +51,15 @@ class Race {
     private var _elapsedMs as Number;
     private var _segmentStartMs as Number;
 
-    //! Actual time taken, and time taken at target pace, decayed by the distance
-    //! run. Their ratio is a smoothed measure of actual speed as a fraction of
-    //! target speed, with a smoothing length scale of perfRatioScaleM.
-    //!
-    //! Both start at PACE_SEED_M worth of time at the initial target pace, to
-    //! prevent division by zero.
+    //! Actual time taken, and time taken at target pace, decayed by the
+    //! distance run. Their ratio is a smoothed measure of actual speed as a
+    //! fraction of target speed, with a smoothing length scale of
+    //! perfRatioScaleM.
     private var _takenS as Float;
     private var _allowedS as Float;
 
     //! Current speed in metres per second and heart rate in bpm, straight from
-    //! Activity.Info. Null when the watch has nothing to report yet.
+    //! Activity.Info. Null when Activity.Info has no value.
     var speedMps as Float?;
     var heartRate as Number?;
 
@@ -92,23 +77,22 @@ class Race {
         speedMps = null;
         heartRate = null;
 
-        // Equal totals, so the race opens reading its target rather than
-        // whatever the first stride happened to measure.
+        // Equal totals, so the ratio starts at 1.
         var seeded = _course.paceS(0) * PACE_SEED_M / M_PER_KM;
         _takenS = seeded;
         _allowedS = seeded;
     }
 
     //! Update performance ratio EMAs with a distance increment of `ds` metres
-    //! and time increment of `dt` seconds
+    //! and time increment of `dt` seconds.
     private function accumulate(ds as Float, dt as Float) as Void {
         var decay = Math.pow(Math.E, -ds / _course.perfRatioScaleM).toFloat();
         _takenS = decay * _takenS + dt;
         _allowedS = decay * _allowedS + ds / M_PER_KM * _course.paceS(_next);
     }
 
-    //! Announce a new segment with a tone and vibration pattern, if watch
-    //! supports tones/vibration
+    //! Announce a new segment with a tone and vibration pattern, if the watch
+    //! supports them.
     private function alertNewSegment() as Void {
         if (Attention has :playTone) {
             Attention.playTone(Attention.TONE_LAP);
@@ -122,8 +106,8 @@ class Race {
         }
     }
 
-    //! Move on to the next segment, taking the current odometer and clock
-    //! readings as the boundary.
+    //! Advance to the next segment, recording the current odometer and elapsed
+    //! time as its starting values.
     private function advance() as Void {
         _segmentStartM = _distanceM;
         _segmentStartMs = _elapsedMs;
@@ -131,7 +115,7 @@ class Race {
         alertNewSegment();
     }
 
-    //! Take a second's worth of fresh activity data.
+    //! Update the race state from an Activity.Info reading.
     function update(info as Activity.Info) as Void {
         speedMps = info.currentSpeed;
         heartRate = info.currentHeartRate;
@@ -140,8 +124,7 @@ class Race {
             return;
         }
 
-        // Not started: step the preview on and take nothing else from the
-        // reading.
+        // During preview, advance the displayed segment and return.
         _previewing = info.timerState == Activity.TIMER_STATE_OFF;
         if (_previewing) {
             _preview = (_preview + 1) % _course.size();
@@ -154,11 +137,9 @@ class Race {
         if (t != null && d != null) {
             var v = speedMps;
             if (v != null && v >= MIN_RACING_SPEED_MPS) {
-                // Update performance ratio average. This is done before checking if
-                // we've passed through a gate, and so if we just crossed one, uses the
-                // target pace of the previous segment (which is kind of arbitrary since
-                // the waypoint was passed at some random time within the last timestep,
-                // but makes sense since the user hasn't seen the new target pace yet).
+                // Update the performance ratio before testing the gate, so a
+                // step that crosses one is counted at the previous segment's
+                // target pace.
                 var dt = (t - _elapsedMs) / MS_PER_S;
                 accumulate(v * dt, dt);
             }
@@ -190,13 +171,13 @@ class Race {
         return _next >= _course.size();
     }
 
-    //! The segment on show, as an index into the course: the one being run, or
-    //! the one being previewed while the race is yet to start.
+    //! The displayed segment, as an index into the course: the one being run,
+    //! or the previewed one while the race is yet to start.
     function segment() as Number {
         return _previewing ? _preview : _next;
     }
 
-    //! Ground covered in this segment so far, in metres.
+    //! Distance run in this segment so far, in metres.
     function ranInSegmentM() as Float {
         return _distanceM - _segmentStartM;
     }
@@ -210,22 +191,21 @@ class Race {
         return (_elapsedMs - _segmentStartMs) / MS_PER_S;
     }
 
-    //! Distance still to run in segment i, in metres. Goes negative once the
-    //! runner is past where the gate should have been but has not yet crossed
-    //! it — which is the normal case for a metre or two, since the odometer and
-    //! the course never agree exactly.
+    //! Distance still to run in segment i, in metres. Negative once the runner
+    //! is past the segment's nominal length without having crossed its gate,
+    //! which is normal for a metre or two.
     private function remainingInM(i as Number) as Float {
         return _course.lengthM(i) - ranInSegmentM();
     }
 
-    //! Distance still to run in the segment on show. Nothing has been run in a
-    //! previewed one, so that is the whole of it.
+    //! Distance still to run in the displayed segment. A previewed segment uses
+    //! its full length.
     function remainingM() as Float {
         return remainingInM(segment());
     }
 
     //! Average pace over the part of the current segment run so far, in seconds
-    //! per km. Null until far enough into the segment to divide by.
+    //! per km. Null until the distance run in the segment is positive.
     function segmentPaceS() as Float? {
         var km = ranInSegmentM() / M_PER_KM;
         if (km <= 0.0) {
@@ -244,25 +224,21 @@ class Race {
     }
 
     //! Plan time still to run, in seconds: what is left of the current segment
-    //! at its own target pace, and every segment after it at theirs. Measured
-    //! against the segment being run rather than the one on show, so that a
-    //! preview leaves the projections reading the whole plan.
+    //! at its target pace, plus every later segment at theirs. Uses the segment
+    //! being run, not the displayed one.
     private function planRemainingS() as Float {
         return remainingInM(_next) / M_PER_KM * _course.paceS(_next)
             + _course.planAfterS(_next);
     }
 
-    //! The finish time the race is on for if the rest of it is run to plan, in
-    //! seconds of elapsed time. Its standing against the plan is just the time
-    //! won or lost so far, since everything ahead is being counted at its
-    //! target.
+    //! The projected finish time in seconds, with every remaining segment run
+    //! at its target pace.
     function targetFinishS() as Float {
         return _elapsedMs / MS_PER_S + planRemainingS();
     }
 
-    //! The finish time the race is on for if the rest of it is run at the
-    //! fraction of target pace the last perfRatioScaleM metres have been run
-    //! at, applied to every segment still to come.
+    //! The projected finish time in seconds, with every remaining segment run
+    //! at the current performance ratio.
     function perfRatioFinishS() as Float {
         return _elapsedMs / MS_PER_S + _takenS / _allowedS * planRemainingS();
     }

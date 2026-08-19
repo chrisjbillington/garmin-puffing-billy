@@ -5,35 +5,32 @@ import Toybox.Lang;
 import Toybox.WatchUi;
 
 //! A data field for a race on a fixed course, split into segments by named
-//! waypoints. Given the whole face it shows how far is left to the next
-//! waypoint, how the segment is being run against its target pace, and a bar
-//! giving the shape of the whole course at a glance. Given half the face there
-//! is no room for any of that, so it shows one of the finish times the race is
-//! on for instead, and how it stands against the plan — which one depending on
-//! whether it has been given the top half of the display or the bottom, so that
-//! adding it to both halves of a screen gives both.
+//! waypoints. Given the whole face it shows the distance to the next waypoint,
+//! the target, segment and current paces, and a bar giving the shape of the
+//! whole course. Given the top half of the display it shows the target-pace
+//! finish projection, and given the bottom half the performance-ratio one, each
+//! with the time ahead or behind the target. Adding the field to both halves of
+//! a screen gives both.
 class PuffingBillyField extends WatchUi.DataField {
 
-    //! The distance to the next waypoint is held in metres and drawn in km.
+    //! The distance to the next waypoint is in metres and displayed in km.
     private const M_PER_KM = 1000.0;
 
     //! Pace spread at which a segment's colour saturates, as a fraction of the
     //! course's average pace. The segment targets run from 19% faster than
-    //! average to 24% slower, so 0.25 uses most of the ramp without clipping
-    //! either end to a flat block of colour.
+    //! average to 24% slower.
     private const PACE_SPREAD = 0.25;
 
-    //! How much a segment's colour is knocked back for course not yet run.
-    //! Integer, used as a divisor on each colour channel.
+    //! Divisor dimming the colour of course not yet run. Must be an integer.
     private const DIM = 2;
 
-    //! How long the target pace is highlighted for on entering a new segment,
-    //! in seconds.
+    //! Duration of the target pace highlight on entering a new segment, in
+    //! seconds.
     private const HIGHLIGHT_S = 10.0;
 
-    //! How far the segment's colour is mixed towards the foreground before the
-    //! highlight is drawn in it. Takes the segment colours to about 9:1 against
-    //! their background, the weight the labels and standings are set at.
+    //! Mix fraction from the segment's colour towards the foreground for the
+    //! highlight. Gives the segment colours a contrast ratio of about 9:1 with
+    //! the background, the same as the labels and standings.
     private const HIGHLIGHT_LIFT = 0.45;
 
     //! The margin around the target pace label inside its pill, as fractions of
@@ -42,26 +39,21 @@ class PuffingBillyField extends WatchUi.DataField {
     private const PILL_MARGIN_X = 0.3;
     private const PILL_MARGIN_Y = 0.1;
 
-    //! Labels and rules, in a slate blue a few stops down from the foreground:
-    //! enough contrast to read when looked at, little enough that the eye goes
-    //! to the numbers rather than to what they are called. The upcoming
-    //! waypoint is a value rather than a label, so it takes a blue of the same
-    //! weight but with the grey taken out of it — told apart by its hue rather
-    //! than by being brighter.
+    //! Labels and rules, in a slate blue dimmer than the foreground. The
+    //! upcoming waypoint is a value rather than a label, and is a blue of
+    //! the same contrast ratio but more saturated.
     //!
-    //! One pair per background, because a single colour cannot sit the same
-    //! distance from both black and white. Each is picked to land near 9:1
-    //! against its own background, against the 21:1 the white-on-black numbers
-    //! get, so the hierarchy holds whichever way round the field is drawn.
+    //! One pair per background, since a single colour cannot be the same
+    //! distance from both black and white. Each has a contrast ratio near 9:1
+    //! with its own background, where the white-on-black figures have 21:1.
     private const LABEL_ON_DARK = 0x96AFC8;    // 9.3:1 on black
     private const LABEL_ON_LIGHT = 0x334C66;   // 8.9:1 on white
     private const NAME_ON_DARK = 0x74BEF5;     // 10.4:1 on black
     private const NAME_ON_LIGHT = 0x14508A;    // 8.3:1 on white
 
-    //! Where a projection stands against the plan, green when the race is being
-    //! run up on it and red when it is being run down. Picked to the same
-    //! weight as the labels, near 9:1 on their own background, so the colour
-    //! carries the sense of the number without shouting over the figures.
+    //! Colours for the time a projection is ahead or behind the target
+    //! finishing time, green when ahead and red when behind. Near 9:1 on their
+    //! own background, the same contrast ratio as the labels.
     private const AHEAD_ON_DARK = 0x4CCB6A;    // 10.1:1 on black
     private const AHEAD_ON_LIGHT = 0x0A5A1E;   // 8.4:1 on white
     private const BEHIND_ON_DARK = 0xFF8A7A;   // 9.2:1 on black
@@ -72,20 +64,18 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _face as Face;
     private var _layout as Layout;
 
-    //! What the three paces across the middle of the face are, and what each
-    //! projection assumes — the projections in the order the halves of the
-    //! display take them, the upper one first. Held rather than built per draw,
-    //! since a data field draws about once a second for the length of a race.
+    //! Labels for the three pace columns and for the two projections. The
+    //! projection labels are in display order, top half first.
     private var _paceLabels as Array<String>;
     private var _projLabels as Array<String>;
 
     //! The train shown above the figures of a half-height field given the top
-    //! of the display. It is imported without dithering in drawables.xml so its
-    //! small, deliberately limited palette stays crisp.
+    //! of the display. drawables.xml imports it without dithering, to preserve
+    //! its limited palette.
     private var _train as Graphics.BitmapReference;
 
-    //! Dimensions and obscurity flags used to identify which part of the screen the
-    //! field was assigned. Initialised to -1 and set on call to onUpdate().
+    //! Screen region dimensions and obscurity flags from the last layout. -1
+    //! before the first onUpdate().
     private var _laidOutW as Number;
     private var _laidOutH as Number;
     private var _laidOutObscurity as Number;
@@ -113,21 +103,21 @@ class PuffingBillyField extends WatchUi.DataField {
 
     //! Called once per second with fresh activity data. Do the computation
     //! here, not in onUpdate() — onUpdate() is called on the device's own
-    //! schedule, which on an AMOLED watch drops right off in low-power mode.
+    //! schedule, which on an AMOLED watch slows considerably in low-power mode.
     function compute(info as Activity.Info) as Void {
         _race.update(info);
     }
 
-    //! The activity has ended. Start a new race, so a following activity does
-    //! not run on the distances and times this one accumulated.
+    //! The activity has ended. Reset the race state, so the next activity
+    //! starts from zero distance and time.
     function onTimerReset() as Void {
         _race = new Race(_course);
     }
 
-    //! Lay out the field based on what screen region it has been assigned, and cache
-    //! the result, recomputing only if the screen region's dimensions or obscurity
-    //! flags change. This may only be called during onUpdate(), since
-    //! getObscurityFlags() must only be called from onUpdate().
+    //! Lay out the field for its assigned screen region and cache the result,
+    //! recomputing only if the region's dimensions or obscurity flags change.
+    //! Call this only during onUpdate(), since getObscurityFlags() must only be
+    //! called from onUpdate().
     private function ensureLayout(dc as Dc) as Void {
         var w = dc.getWidth();
         var h = dc.getHeight();
@@ -158,7 +148,7 @@ class PuffingBillyField extends WatchUi.DataField {
         if (t < -1.0) { t = -1.0; }
         if (t > 1.0) { t = 1.0; }
 
-        // Full green at -1, full red at +1, both channels up at 0 for amber.
+        // Full green at -1, full red at +1, red = green = 255 at 0 for amber.
         var red = 255;
         var green = 255;
         if (t < 0.0) {
@@ -169,7 +159,7 @@ class PuffingBillyField extends WatchUi.DataField {
         return (red << 16) | (green << 8);
     }
 
-    //! The same colour knocked back, for course not yet run.
+    //! The same colour dimmed, for course not yet run.
     private function dim(colour as Number) as Number {
         return ((((colour >> 16) & 0xFF) / DIM) << 16) |
             ((((colour >> 8) & 0xFF) / DIM) << 8) |
@@ -211,8 +201,8 @@ class PuffingBillyField extends WatchUi.DataField {
         var top = Roboto.baselineAt(_layout.yPaceLabel, font) - up - marginY;
         var radius = h / 4.0;
 
-        // Cut back to what the inset leaves at the highest row the pill is at
-        // full width on, which is the narrowest of them.
+        // Limit the pill to the inset width at its highest full-width row,
+        // which is its narrowest.
         var half = dc.getTextWidthInPixels(label, font) / 2.0
             + PILL_MARGIN_X * fontH;
         var offset = x - w / 2;
@@ -228,10 +218,8 @@ class PuffingBillyField extends WatchUi.DataField {
         );
     }
 
-    //! A horizontal divider at y, spanning the middle three fifths of what is
-    //! available there — so the rules draw in shorter as they approach the top
-    //! and bottom of the face, which reads as dividers following the shape of
-    //! the display rather than as a box drawn across it.
+    //! A horizontal divider at y, spanning the middle three fifths of the width
+    //! available there.
     private function drawRule(dc as Dc, w as Number, y as Number) as Void {
         var half = _face.halfWidthAt(y) * 3.0 / 5.0;
         dc.drawLine(w / 2 - half, y, w / 2 + half, y);
@@ -240,20 +228,18 @@ class PuffingBillyField extends WatchUi.DataField {
     //! Race progression as a horizontal bar centred on y, with a marker at the
     //! runner's position.
     //!
-    //! Every segment is coloured by its target pace against the course average,
-    //! green where the plan is fast and red where it is slow. Each is laid down
-    //! dimmed and refilled at full strength over the part already covered, so
-    //! the plan is legible end to end from the start and progress reads as the
-    //! bar brightening from the left.
+    //! Every segment is coloured by the ratio of its target pace to the course
+    //! average, green where the plan is fast and red where it is slow. We fill
+    //! each segment in its dimmed colour, then overdraw the part already run in
+    //! the full colour.
     private function drawBar(
         dc as Dc, w as Number, y as Number, fg as Number
     ) as Void {
         var pen = _layout.barPen;
         var top = y - pen / 2;
 
-        // Measured at whichever of the bar's long edges is further from the
-        // middle of the face, so the whole rectangle clears the inset rather
-        // than just its centre line.
+        // Measured at the bar's long edge further from the middle of the face,
+        // so the whole rectangle clears the inset.
         var far = _face.aboveCentre(y) ? top : y + pen / 2;
         var half = _face.halfWidthAt(far);
         if (half <= 0.0) {
@@ -266,8 +252,8 @@ class PuffingBillyField extends WatchUi.DataField {
         var segment = _race.segment();
 
         // Each segment's right edge is rounded once and reused as the next
-        // one's left, so the seams neither gap nor overlap however the
-        // kilometres divide up.
+        // one's left, so the seams neither gap nor overlap at any segment
+        // division.
         var done = 0.0;
         var left = barLeft;
         var here = barLeft;
@@ -280,8 +266,9 @@ class PuffingBillyField extends WatchUi.DataField {
             dc.setColor(dim(colour), Graphics.COLOR_TRANSPARENT);
             dc.fillRectangle(left, top, right - left, pen);
 
-            // How much of this segment is behind us. Clamped to its nominal
-            // length so overrunning a gate can't bleed into the next one.
+            // Distance completed in this segment, clamped to its nominal
+            // length so overrunning a gate cannot fill past the segment's
+            // right edge.
             var run = 0.0;
             if (i < segment) {
                 run = len;
@@ -306,12 +293,10 @@ class PuffingBillyField extends WatchUi.DataField {
         }
         var barRight = left;
 
-        // One marker at the runner's position, drawn last so it stays legible
-        // over any segment colour, and standing a little proud of the bar top
-        // and bottom. Pulled in by its own half-width at either end so that it
-        // reads as the first and last thing on the bar rather than overhanging
-        // it — most of a race is spent nowhere near the ends, but the start is
-        // exactly when the field is looked at hardest.
+        // One marker at the runner's position, drawn after the segment bars so
+        // it is legible over any segment colour. It extends past the bar top
+        // and bottom, and its position is clamped by half the marker width at
+        // each end so it does not overhang the bar.
         var markPen = pen / 2 - 1;
         var proud = pen / 2 + markPen / 2;
         var lo = barLeft + markPen / 2;
@@ -325,8 +310,8 @@ class PuffingBillyField extends WatchUi.DataField {
     }
 
     //! Draw two runs of text side by side, the pair centred together on the
-    //! face. drawText() takes one font and the device one colour, so mixing
-    //! either on a line means measuring both halves and placing each by hand.
+    //! face. drawText() takes a single font, and the device a single colour, so
+    //! we measure and place each run separately.
     private function drawPair(
         dc as Dc, w as Number, y as Number,
         left as String, leftFont as FontType, leftColour as Number,
@@ -345,13 +330,10 @@ class PuffingBillyField extends WatchUi.DataField {
     }
 
     //! Draw the half-height field: one projected finish time, labelled with the
-    //! name of the pace it assumes and with the time ahead or behind of plan
-    //! shown next to it.
+    //! pace it assumes, and the time ahead or behind of plan beside it.
     //!
-    //! Which of the two it is comes from where the field has been put, so that
-    //! adding the field to both halves of one data screen shows both: the
-    //! target-pace finish above the middle of the face and the one from the
-    //! current performance ratio below it.
+    //! The top half shows the target-pace finish, the bottom half the
+    //! performance-ratio one.
     private function drawHalfScreenField(
         dc as Dc, w as Number,
         fg as Number, labelColour as Number, dark as Boolean
@@ -381,8 +363,8 @@ class PuffingBillyField extends WatchUi.DataField {
         }
     }
 
-    //! Draw the full-screen field: the heart rate, the three paces, the course bar,
-    //! and the waypoint being run towards with the distance still to it.
+    //! Draw the full-screen field: the heart rate, the three paces, the course
+    //! bar, and the next waypoint with the distance still to run.
     private function drawFullScreenField(
         dc as Dc, w as Number, bg as Number, fg as Number,
         labelColour as Number, nameColour as Number, dark as Boolean
@@ -390,8 +372,6 @@ class PuffingBillyField extends WatchUi.DataField {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         var segment = _race.segment();
 
-        // Three digits and a short unit, high on the face where it is narrow:
-        // still the row with the most room to spare at the shared size.
         var hr = _race.heartRate;
         drawPair(
             dc, w, _layout.yHr,
@@ -399,16 +379,15 @@ class PuffingBillyField extends WatchUi.DataField {
             "BPM", Graphics.FONT_XTINY, labelColour
         );
 
-        // Three paces straddling the middle of the face, each label centred
-        // over its value, the columns as far apart as they will go.
+        // Three pace columns centred on the middle of the face, each label
+        // centred over its value, the outer two offset by _layout.paceColumn.
         var paces = [
             _course.paceS(segment), _race.segmentPaceS(), _race.currentPaceS()
         ] as Array<Float?>;
 
-        // For the first HIGHLIGHT_S of a segment the target pace takes the
-        // colour that segment is drawn in on the bar, lifted towards the
-        // foreground, and its label is reversed out of a pill in the same
-        // colour.
+        // For the first HIGHLIGHT_S of a segment, draw the target pace in the
+        // segment's bar colour mixed towards the foreground, and its label in
+        // the background colour over a pill in that same colour.
         var lit = highlighted();
         var accent = fg;
         if (lit) {
@@ -442,11 +421,10 @@ class PuffingBillyField extends WatchUi.DataField {
         );
 
         // The face is narrow this near the bottom, and this row is the widest
-        // of the three: the value runs to five characters once the distance
-        // goes negative on the approach to a gate, and "km" hangs off the end
-        // of it. That, rather than the rows above, is what holds its size down.
-        // The distance is red once it goes negative, which is the runner past
-        // where the gate should have been with the crossing not yet detected.
+        // of the three: the value is five characters long if the distance is
+        // negative on the approach to a gate, plus "km" after it. The
+        // distance is red when negative, i.e. the runner has exceeded the
+        // nominal segment length without a detected gate crossing.
         var remainingM = _race.remainingM();
         var remainingColour = (remainingM < 0.0)
             ? (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT)
@@ -462,11 +440,11 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.setPenWidth(1);
         drawRule(dc, w, _layout.yRule);
 
-        // Last, because it leaves the pen width and colour where it likes.
+        // Last, because drawBar() leaves the pen width and colour set.
         drawBar(dc, w, _layout.yBar, fg);
     }
 
-    //! Draw the field, into whichever part of the display it has been given.
+    //! Draw the field into its assigned screen region.
     function onUpdate(dc as Dc) as Void {
         ensureLayout(dc);
 
@@ -481,9 +459,8 @@ class PuffingBillyField extends WatchUi.DataField {
 
         var w = dc.getWidth();
 
-        // Past the last gate there is nothing left to pace, and the activity is
-        // about to be stopped, so the word is the whole screen. Centred the
-        // same way as the paces: on the ink, not on the line box.
+        // After the final gate, centre "Finished" on its cap height, like the
+        // pace rows.
         if (_race.finished()) {
             var font = _layout.figureFont;
             var capMid = dc.getHeight() / 2.0 + Roboto.capHeight(font) / 2.0;

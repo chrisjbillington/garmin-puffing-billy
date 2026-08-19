@@ -1,19 +1,15 @@
 import Toybox.Graphics;
 import Toybox.Lang;
 
-//! Where every row on the face is drawn. Solved once, when the watch tells the
-//! field how much of the display it has been given, and read on every draw.
+//! The y coordinate of every row on the face.
 //!
-//! Each y is where a row is drawn, not the top of its ink: rows are placed by
-//! their baselines and the ink standing either side of them, which is what
-//! Roboto measures.
+//! Each y is a draw position, not the top of the row's ink: we position rows by
+//! baseline and by the ink above and below it, as measured by Roboto.
 class Layout {
 
-    //! Where a pace label sits between the rule above it and the digits below,
-    //! as the fraction D/C of the gap the rest of the top of the face is spaced
-    //! by. At 1 the label is centred between the two; the lower it goes the
-    //! more it belongs to the column under it rather than to the rule, which is
-    //! the whole reason a label is nearer its value than its neighbours.
+    //! Gap D, between a pace label and the digits below it, as a fraction of
+    //! the gap A = B = C used higher up the face. At 1 the label is centred
+    //! between the rule and the digits.
     private const LABEL_GAP_RATIO = 0.6;
 
     //! The progress bar's thickness, as a divisor of the display width. Given
@@ -24,36 +20,28 @@ class Layout {
     //! the display width.
     private const PAIR_GAP_DIV = 40;
 
-    //! The font every figure on the face is set in, as a height in pixels and a
-    //! scalable face. Scalable because the system fonts step straight from
-    //! FONT_LARGE at 61px to FONT_NUMBER_MILD at 97px, and these want to sit
-    //! between the two: at 70px the digits stand 43px, against 37px and 49px.
+    //! The font we use for all figures, as a height in pixels and a scalable
+    //! face. The system fonts step from FONT_LARGE, with 37px digits, to
+    //! FONT_NUMBER_MILD, with 49px digits. At 70px this face gives 43px digits.
     //!
-    //! Condensed because three four-character paces have to sit side by side
-    //! across the middle of the face. In Roboto proper they leave 8px between
-    //! columns even pushed out as far as the bezel clearance allows; condensed
-    //! digits are a sixth narrower, which opens that to 27px.
+    //! Condensed digits are a sixth narrower than Roboto proper, giving 27px
+    //! between the three pace columns.
     private const FIGURE_FONT_PX = 70;
     private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
 
-    //! The same face at the size half the display can carry, which is a little
-    //! less than the whole one. A finish time and its standing share a line,
-    //! inside a band whose far end tapers away into the bezel — so the size
-    //! pays twice over, once in the width that pushes the line in towards the
-    //! middle of the face and again in the depth it takes out of the band. At
-    //! 60px the line clears the inset with a standing run out to two digits of
-    //! minutes, and what is left over spaces the label above it to the same
-    //! rhythm the whole face is set to.
+    //! The same face, sized for a half-screen field. A finish time and its
+    //! standing share a line, so the font size sets both the width of that line
+    //! and its height. At 60px the line clears the inset with a standing of two
+    //! digits of minutes.
     private const FIGURE_FONT_HALF_PX = 60;
 
     private var _face as Face;
 
-    //! Whether the field has been given a half-screen
+    //! Whether the field has half the screen.
     var half as Boolean;
 
-    //! The figure font, at whichever size the field has the room for. Falls
-    //! back to FONT_LARGE on a device that cannot supply the face at the size
-    //! asked for.
+    //! The figure font, which is either the full-screen or half-screen size.
+    //! FONT_LARGE if the device cannot supply the scalable face.
     var figureFont as FontType;
 
     //! The progress bar's thickness, and the gap between two runs of text that
@@ -61,7 +49,8 @@ class Layout {
     var barPen as Number;
     var pairGap as Number;
 
-    //! How far either side of centre the outer pace columns sit.
+    //! Distance from the centre of the face to the centre of an outer pace
+    //! column.
     var paceColumn as Float;
 
     //! The rows of the whole face.
@@ -74,8 +63,8 @@ class Layout {
     var yRemaining as Number;
 
     //! The rows of the half-height field: the line naming its projection, the
-    //! line of figures under that, and the train that fills the rest of the
-    //! band on a field given the top half of the display.
+    //! line of figures under it, and the train drawn in the rest of the band
+    //! when the field has the top half of the display.
     var yProjLabel as Number;
     var yProjValue as Number;
     var yTrain as Number;
@@ -100,15 +89,13 @@ class Layout {
         yTrain = 0;
     }
 
-    //! Solve the layout for the box the watch has given the field. `labels` are
-    //! the projection labels and `train` the image drawn beside them, both of
-    //! which the half-height layout is measured against.
+    //! Solve the layout for the field's box. The half-height layout is sized
+    //! from the projection labels `labels` and the image `train`.
     function solve(
         dc as Dc, labels as Array<String>, train as Graphics.BitmapReference
     ) as Void {
         barPen = dc.getWidth() / BAR_PEN_DIV;
         pairGap = dc.getWidth() / PAIR_GAP_DIV;
-        // Treat as half screen if field is less than 75% of display height
         half = dc.getHeight() < 0.75 * _face.h;
 
         figureFont = Graphics.FONT_LARGE;
@@ -127,8 +114,8 @@ class Layout {
         }
     }
 
-    //! How much of a span a run of rows fills with ink: what each reaches above
-    //! its baseline plus what it reaches below.
+    //! Total ink height of a run of rows: the sum of their ink extents above
+    //! and below their baselines.
     private function inkHeight(
         up as Array<Float>, down as Array<Float>
     ) as Float {
@@ -139,9 +126,8 @@ class Layout {
         return ink;
     }
 
-    //! The gap that fills what is left of a span once that ink is taken out.
-    //! Each weight is a share of it: one for the gap before each row, and one
-    //! more to close the span.
+    //! One share of the space left in a span once the ink is subtracted.
+    //! `weights` gives the shares before each row, plus one closing the span.
     private function unitGap(
         span as Float, up as Array<Float>, down as Array<Float>,
         weights as Array<Float>
@@ -155,7 +141,7 @@ class Layout {
     }
 
     //! The baselines of a run of rows stacked down from `top`, each preceded by
-    //! its weight's worth of the gap.
+    //! weights[i] * gap.
     private function stack(
         top as Float, gap as Float, up as Array<Float>, down as Array<Float>,
         weights as Array<Float>
@@ -172,7 +158,7 @@ class Layout {
 
     //! Solve the vertical rhythm of the whole face.
     //!
-    //! Reading down it, the gaps are
+    //! The gaps are
     //!
     //!     A  top of the display to the top of the heart rate's digits
     //!     B  heart rate baseline to the rule
@@ -183,14 +169,11 @@ class Layout {
     //!     G  name baseline to the top of the remaining-distance digits
     //!     H  its baseline to the bottom of the display
     //!
-    //! wanted as A = B = C = E and F = G = H, with D a set fraction of C and
-    //! the pace digits centred on the face. That is seven equations for the
-    //! seven rows, and it falls out top down: centring places the paces, then
-    //! the group above them solves against that, and its gap places the bar,
-    //! which in turn spans the group below.
-    //!
-    //! The pace digits sit on the middle of the face because that is where the
-    //! chord is longest, which is what lets their columns stand furthest apart.
+    //! The constraints are A = B = C = E and F = G = H, with D a set fraction
+    //! of C and the pace digits centred on the face. That is seven equations
+    //! for the seven rows, solved top down: centring places the paces, the
+    //! group above them fills the span down to the pace digits, its gap sets
+    //! the bar position, and the bar spans the group below.
     private function solveFull(dc as Dc) as Void {
         var h = dc.getHeight();
 
@@ -204,7 +187,7 @@ class Layout {
 
         // The heart rate, the rule and the pace label, spanning the display top
         // to the pace digits: gaps A, B and C before them and D closing on the
-        // digits. The rule is a row of no ink at all.
+        // digits. The rule has no ink.
         var topUp = [figCap, 0.0, labelX] as Array<Float>;
         var topDown = [0.0, 0.0, 0.0] as Array<Float>;
         var topGaps = [1.0, 1.0, 1.0, LABEL_GAP_RATIO] as Array<Float>;
@@ -214,7 +197,8 @@ class Layout {
         yRule = (upperRows[1] + 0.5).toNumber();
         yPaceLabel = Roboto.yForBaseline(upperRows[2], Graphics.FONT_XTINY);
 
-        // E closes the top group, and the bar hangs its own half width below.
+        // E closes the top group; yBar is the bar's centre, half a pen below
+        // its top edge.
         yBar = (paceBase + above + barPen / 2.0 + 0.5).toNumber();
 
         // The waypoint name and the distance to it, spanning the bar to the
@@ -231,19 +215,14 @@ class Layout {
         paceColumn = paceColumnOffset(dc, paceBase);
     }
 
-    //! Solve the vertical rhythm of the half-height field: a line naming a
-    //! projection over the finish time it is heading for and the standing
-    //! beside it, the label sitting closer to its own figures than the pair of
-    //! them do to the middle of the face by the same LABEL_GAP_RATIO the whole
-    //! face is spaced by.
+    //! Solve the vertical rhythm of the half-height field: a projection label
+    //! above its finish time, with the standing beside that time. The
+    //! label-to-figures gap is LABEL_GAP_RATIO times the gap from the figures
+    //! to the near end of the band.
     //!
-    //! The block is built out from whichever end of the band is nearer the
-    //! middle of the face, since that is the end with width in it; the other
-    //! tapers into the bezel. How far it may run is set by the widest of its
-    //! rows, and it is spaced to reach exactly that far — so a field given the
-    //! top half of the display and one given the bottom half come out as mirror
-    //! images, and the two read as a pair when both are on one screen. Both
-    //! labels are measured whichever one this half draws, to the same end.
+    //! The block starts at the wider end of the band and extends as far as its
+    //! widest row requires, so the top-half and bottom-half fields are mirror
+    //! images. Both projection labels contribute to that width.
     private function solveHalf(
         dc as Dc, labels as Array<String>, train as Graphics.BitmapReference
     ) as Void {
@@ -252,10 +231,9 @@ class Layout {
         var labelDown = Roboto.inkDown(Graphics.FONT_XTINY);
         var figCap = Roboto.capHeight(figureFont);
 
-        // The figure line is the wide one, measured on the longest it gets: a
-        // finish over the hour, and a standing run out to two digits of
-        // minutes. The labels are shorter than that but are checked anyway,
-        // since it is the figure size rather than they that is tuned.
+        // The figure line is wider than the labels. Its longest form is an
+        // h:mm:ss finish and a standing with two digits of minutes. The label
+        // widths are included too.
         var widest = dc.getTextWidthInPixels("0:00:00", figureFont)
             + pairGap
             + dc.getTextWidthInPixels("+00:00", figureFont);
@@ -269,10 +247,8 @@ class Layout {
         var span = _face.reachFor(widest / 2.0) - _face.nearEdge();
         if (span > h) { span = h.toFloat(); }
 
-        // Two rows of ink: a label at the ratio above its own figures, and a
-        // full gap at the near end of the band. The far end is simply where the
-        // block stops, so the whole thing mirrors about the near end whichever
-        // way up the field has been put.
+        // Two rows of ink: a label at the ratio above its figures, and a full
+        // gap at the near end of the band.
         var lower = _face.belowCentre();
         var r = LABEL_GAP_RATIO;
         var up = [labelUp, figCap] as Array<Float>;
@@ -281,9 +257,8 @@ class Layout {
             ? ([1.0, r, 0.0] as Array<Float>)
             : ([0.0, r, 1.0] as Array<Float>);
 
-        // A band too shallow for its own ink is filled from the near end and
-        // allowed to run off the far one, where there was no width to draw in
-        // anyway.
+        // If the span is smaller than the ink height, use the ink height. The
+        // excess extends into the zero-width end of the band.
         var ink = inkHeight(up, down);
         if (span < ink) { span = ink; }
 
@@ -292,10 +267,9 @@ class Layout {
         yProjLabel = Roboto.yForBaseline(rows[0], Graphics.FONT_XTINY);
         yProjValue = Roboto.yForBaseline(rows[1], figureFont);
 
-        // The train rides in the middle of what the block leaves at the top of
-        // the band, held far enough down the face for the circular safe inset
-        // to clear it. That reach is measured at its top corners, not merely at
-        // its centre, so the whole rectangular bitmap stays off the bezel.
+        // The train is centred in the free space at the top of the band, and
+        // moved down far enough to clear the safe inset. We measure the inset
+        // at the bitmap's top corners, so the whole rectangle clears it.
         var imageHalfW = train.getWidth() / 2.0;
         var imageHalfH = train.getHeight() / 2.0;
         var imageReach = _face.reachFor(imageHalfW) - imageHalfH;
@@ -305,22 +279,20 @@ class Layout {
         yTrain = (imageCentre - imageHalfH + 0.5).toNumber();
     }
 
-    //! How far either side of centre the outer pace columns sit, so that they
-    //! stand as far apart as the face allows: the ink of an outer pace lands on
-    //! the circle the safe inset leaves.
+    //! Distance from the centre of the face to the centre of an outer pace
+    //! column. The outer edge of that column's ink lands on the inset circle.
     //!
-    //! Taken at the digits' baseline. Fmt.pace() only ever emits digits, a
-    //! colon and a dash, none of which descend, so the row's ink stops there
-    //! rather than at the bottom of the line box. The pace ink is centred on
-    //! the face, which leaves the top of the digits as far above the middle as
-    //! the baseline is below it — so either edge answers the same question.
+    //! Measured at the digits' baseline. Fmt.pace() emits only digits, a colon
+    //! and a dash, none of which descend, so the row's ink ends at the
+    //! baseline. The ink is centred on the face, so the top of the digits is as
+    //! far above the middle as the baseline is below it.
     //!
-    //! The labels are centred on the same columns and are the shorter row, so
-    //! they follow the paces out without needing to be measured themselves.
+    //! The pace row sets the column offset, since it is wider than the label
+    //! row centred on the same columns.
     private function paceColumnOffset(dc as Dc, baseline as Float) as Float {
-        // Every digit in this face is one width, so any four-character pace is
-        // as wide as the row ever gets — measured in advances, off which the
-        // ink stops short by a side bearing at each end.
+        // Every digit in this face has the same advance, so any four-character
+        // pace has the maximum row width. The advance includes a side bearing
+        // at each end, outside the ink.
         var half = dc.getTextWidthInPixels("0:00", figureFont) / 2.0
             - Roboto.digitBearing(figureFont);
         return _face.halfWidthAt((baseline + 0.5).toNumber()) - half;

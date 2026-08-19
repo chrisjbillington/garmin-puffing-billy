@@ -32,8 +32,8 @@ ELEVATION_PLOT_FILE = OUT_DIR / "course_elevation.png"
 
 FIGSIZE = (11, 4.75)
 
-# Labels sit on one of these, so that they can be read where they overlap the
-# course or the elevation trace:
+# Labels are drawn on one of these, so that they can be read where they overlap
+# the course or the elevation trace:
 LABEL_BBOX = {"facecolor": "white", "edgecolor": "none", "alpha": 0.9, "pad": 1}
 
 LABEL_FONTSIZE = 9
@@ -80,8 +80,8 @@ def plot_course():
         ax.plot(*zip(left, right), color="crimson", linewidth=2, zorder=3)
         ax.plot(east, north, marker="o", color="crimson", markersize=4, zorder=4)
         # Alternate the labels above and below the course so they don't collide. The
-        # finish takes an above label whichever side its turn falls on, since the
-        # course runs beneath it and a label there would sit on the track:
+        # finish takes an above label regardless of the alternation, since the course
+        # runs beneath it and a label below would overlap the track:
         above = i % 2 == 0 or i == len(segments) - 1
         ax.annotate(
             f"{name}\n{waypoint['distance'] / km} km",
@@ -167,8 +167,7 @@ def plot_elevation():
     for name, d, ele in zip(segments, segment_distance[1:], segment_ele[1:]):
         # The names are written vertically so that they fit above the shorter
         # segments. They go below the course where it is high and above it where it
-        # is low, so that each sits in the empty space beside the trace rather than
-        # demanding room above it:
+        # is low, so that each is in the empty space beside the trace:
         below = ele > (low + high) / 2
         ax.annotate(
             name,
@@ -176,8 +175,8 @@ def plot_elevation():
             textcoords="data",
             xytext=(d / km, ele - NAME_CLEARANCE if below else ele + NAME_CLEARANCE),
             rotation=90,
-            # The names read bottom to top, so each starts at its end of the line
-            # joining it to the waypoint and runs away from the course:
+            # The names read bottom to top, so each starts at the waypoint end of
+            # its arrow and runs away from the course:
             ha="center",
             va="top" if below else "bottom",
             fontsize=LABEL_FONTSIZE,

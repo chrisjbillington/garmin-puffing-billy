@@ -1,21 +1,20 @@
 import Toybox.Application;
 import Toybox.Lang;
 
-//! The course we're running: segment names, lengths, target paces, GPS "gates" defining
-//! the end of each segment, and other course-related configuration
+//! The course we're running: segment names, lengths, target paces, GPS "gates"
+//! defining the end of each segment, and other course-related configuration
 //! 
-//! The watch knows nothing of the course beyond this. It is compiled in as a
-//! JSON resource built by make_segments.py; see README.md for that pipeline.
+//! This is the watch's entire knowledge of the course. make_segments.py builds
+//! the compiled-in JSON resource; see README.md for that pipeline.
 class Course {
 
     //! Segment lengths are in metres, target paces per km.
     private const M_PER_KM = 1000.0;
 
-    //! 2**31 semicircles to 180 degrees. Gate coordinates are held as integer
-    //! semicircles because Monkey C loads JSON reals as 32-bit Float, whose
-    //! steps span 1.3 m of longitude at this course. Integers are exact, at
-    //! about a centimetre each, so it is the fix that is converted into their
-    //! space, in Double, when a gate is tested.
+    //! 2**31 semicircles to 180 degrees. Gate coordinates are integer
+    //! semicircles, about a centimetre each: Monkey C loads JSON reals as
+    //! 32-bit Float, which have a spacing of 1.3 m of longitude at this course.
+    //! Fixes are converted to semicircles, in Double, when a gate is tested.
     private const DEG_TO_SEMI = 2147483648.0d / 180.0d;
 
     private var _names as Array<String>;
@@ -23,22 +22,19 @@ class Course {
     private var _paces as Array<Float>;
     private var _gates as Array<Number>;
 
-    //! Total course length in metres, the time the whole plan comes to in
-    //! seconds, and the distance-weighted average of the segment target paces
-    //! in seconds per km. All fixed for the race, so worked out once rather
-    //! than on every draw.
+    //! Total course length in metres, total planned time in seconds, and the
+    //! distance-weighted mean of the segment target paces in seconds per km.
     var totalM as Float;
     var planS as Float;
     var meanPaceS as Float;
 
-    //! How far past a gate the runner may get before the segment is advanced despite
-    //! not encountering the gate, and the length scale over which the performance ratio
-    //! exponential moving average is computed, both in metres. Set in config.toml.
+    //! Maximum distance past a gate before the segment advances without a
+    //! detected crossing, and the length scale of the performance ratio moving
+    //! average. Both in metres, from config.toml.
     var overdistanceM as Float;
     var perfRatioScaleM as Float;
 
-    //! Plan time still to come once each segment has been finished, in seconds, for use
-    //! projecting finishing time
+    //! Plan time still to come once each segment has been finished, in seconds.
     private var _planAfter as Array<Float>;
 
     function initialize() {
@@ -73,7 +69,7 @@ class Course {
         return _lengths.size();
     }
 
-    //! The waypoint segment i is run towards.
+    //! Name of the waypoint at the end of segment i.
     function name(i as Number) as String {
         return _names[i];
     }
@@ -92,9 +88,9 @@ class Course {
         return _planAfter[i];
     }
 
-    //! Twice the signed area of the triangle abc, which is positive when c lies
-    //! left of the directed line ab, negative when it lies right, and zero when
-    //! the three are collinear. Only the sign is ever read.
+    //! Twice the signed area of the triangle abc: positive when c is left of
+    //! the directed line ab, negative when right, zero when the three are
+    //! collinear.
     private function cross(
         ax as Double, ay as Double,
         bx as Double, by as Double,
@@ -106,11 +102,11 @@ class Course {
     //! Whether the step from (lat0, lon0) to (lat1, lon1), in degrees, passed
     //! through gate i.
     //!
-    //! Two segments cross exactly when each separates the other's endpoints,
-    //! which is four cross products and a comparison of their signs. Working in
-    //! semicircles rather than metres is fine and saves projecting: scaling an
-    //! axis by a positive constant scales all four cross products by that same
-    //! constant, leaving every sign — and so the result — untouched.
+    //! Two line segments cross exactly when each separates the other's
+    //! endpoints: four cross products and a comparison of their signs.
+    //! Semicircles need no projection to metres, since scaling an axis by a
+    //! positive constant scales all four cross products by the same factor and
+    //! leaves their signs unchanged.
     function crossedGate(
         i as Number,
         lat0 as Double, lon0 as Double,
