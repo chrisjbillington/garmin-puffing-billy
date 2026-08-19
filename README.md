@@ -27,7 +27,7 @@ screen.
 Data field contents
 -------------------
 
-![screenshot](screenshot.png)
+![screenshot](readme_images/screenshot.png)
 
 The data field has a full-screen version, and two half-screen versions (top and bottom
 half). You can include the full-screen version on one data screen and both half-screen
@@ -72,12 +72,26 @@ correctly ahead of time.
   `perf_ratio_scale`, 250 m by default, i.e. based on your performance over the last
   250–500 m or so)
 
+### More screenshots
+
+When the GPS distance accumulated in a segment exceeds the expected segment length (due
+to GPS error or otherwise), the remaining distance to the next waypoint shows as a
+negative value in red:
+
+![overdistance](readme_images/overdistance.png)
+
+When moving to a new segment, the target pace is highlighted in a colour corresponding
+to its pace (green = much faster than course average, red = much slower, yellow = in
+between):
+
+![pace highlight](readme_images/highlight.png)
+
 Waypoint description
 --------------------
 
-![course gates](course_gates.png)
+![course gates](readme_images/course_gates.png)
 
-![course elevation](course_elevation.png)
+![course elevation](readme_images/course_elevation.png)
 
 The default waypoints are:
 
@@ -257,3 +271,4 @@ Brief summary of what each file in `source/` is for:
   assigned.
 - `Roboto.mc` - glyph metrics for the font we use.
 - `Fmt.mc` - string formatting of paces, durations and time ahead/behind.
+

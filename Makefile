@@ -48,7 +48,7 @@ segments: $(RESOURCE)
 # in README.md. MPLBACKEND=Agg so no plot window opens.
 plots: $(RESOURCE)
 	MPLBACKEND=Agg $(PYTHON) plot_segments.py
-	cp out/course_gates.png out/course_elevation.png .
+	cp out/course_gates.png out/course_elevation.png readme_images/
 
 build: check $(PRG)
 
