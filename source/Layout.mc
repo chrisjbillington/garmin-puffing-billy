@@ -75,6 +75,20 @@ class Layout {
     var xPlan as Number;
     var xPerf as Number;
 
+    //! The rule between the standings row and the pace row: its y, and the
+    //! y at which the rules between the pace columns end.
+    var yRule as Number;
+    var yPaceRuleEnd as Number;
+
+    //! The rule curved around the heart rate: the parabola
+    //! y = yHrRule - hrRuleK * dx^2, where dx is the horizontal distance
+    //! from the centre of the face. Its vertex is midway between BPM's
+    //! baseline and the standings' ink top, and where it meets the inset
+    //! circle its tangents pass through the junction of the vertical and
+    //! horizontal rules, at yRule on the centreline.
+    var yHrRule as Number;
+    var hrRuleK as Float;
+
     function initialize(face as Face) {
         _face = face;
 
@@ -95,6 +109,10 @@ class Layout {
         bpmFont = Graphics.FONT_XTINY;
         xPlan = 0;
         xPerf = 0;
+        yRule = 0;
+        yPaceRuleEnd = 0;
+        yHrRule = 0;
+        hrRuleK = 0.0;
     }
 
     //! Solve the layout for the field's box: six rows separated by a uniform
@@ -148,8 +166,9 @@ class Layout {
         var hrW = dc.getTextWidthInPixels("888", figureFont).toFloat();
         var hrTop = h / 2.0 - _face.reachFor(hrW / 2.0 - bearing);
         var hrBase = hrTop + figCap;
+        var bpmBase = hrBase + BPM_GAP + bpmCap;
         yHr = Roboto.yForBaseline(hrBase, figureFont);
-        yBpm = Roboto.yForBaseline(hrBase + BPM_GAP + bpmCap, bpmFont);
+        yBpm = Roboto.yForBaseline(bpmBase, bpmFont);
 
         // Row F. The figures are centred without their sign, which hangs to
         // their left when the distance is negative, so the geometry uses the
@@ -189,6 +208,26 @@ class Layout {
         );
         yBar = (barTop + barPen / 2.0 + 0.5).toNumber();
         yName = Roboto.yForBaseline(nameBase, Graphics.FONT_TINY);
+
+        // The horizontal rule is midway between the standings' baseline and
+        // the pace labels' ink top; the pace-column rules end at the pace
+        // digits' baseline.
+        yRule = (standingBase + gap / 2.0 + 0.5).toNumber();
+        yPaceRuleEnd = (paceBase + 0.5).toNumber();
+
+        // The curved rule's vertex, midway between BPM's baseline and the
+        // standings' ink top. A tangent to the parabola at dx has
+        // y-intercept yHrRule + hrRuleK * dx^2, so tangents through the rule
+        // junction at yRule force the parabola to meet the inset circle at
+        // yRing, as high above the vertex as the junction is below it.
+        yHrRule =
+            ((bpmBase + standingBase - figCap) / 2.0 + 0.5).toNumber();
+        var yRing = 2 * yHrRule - yRule;
+        var ringHalf = _face.halfWidthAt(yRing);
+        hrRuleK = 0.0;
+        if (ringHalf > 0.0) {
+            hrRuleK = (yRule - yHrRule) / (ringHalf * ringHalf);
+        }
 
         var chordHalf = _face.halfWidthAt(
             (standingBase - figCap / 2.0 + 0.5).toNumber()

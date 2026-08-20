@@ -1,6 +1,7 @@
 import Toybox.Activity;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Math;
 import Toybox.WatchUi;
 
 //! A data field for a race on a fixed course, split into segments by named
@@ -35,9 +36,18 @@ class PuffingBillyField extends WatchUi.DataField {
     private const PILL_MARGIN_X = 0.3;
     private const PILL_MARGIN_Y = 0.05;
 
-    //! Labels and rules, in a slate blue dimmer than the foreground. The
-    //! upcoming waypoint is a value rather than a label, and is a blue of
-    //! the same contrast ratio but more saturated.
+    //! The rules separating the sections of the face: their width, the
+    //! length over which a free end fades to the background, the number of
+    //! segments in a fade, and the x step between points of the curved rule,
+    //! all in pixels except the segment count.
+    private const RULE_PEN = 2;
+    private const RULE_FADE = 30;
+    private const RULE_FADE_SEGMENTS = 8;
+    private const HR_RULE_STEP = 3.0;
+
+    //! Labels, in a slate blue dimmer than the foreground. The upcoming
+    //! waypoint is a value rather than a label, and is a blue of the same
+    //! contrast ratio but more saturated.
     //!
     //! One pair per background, since a single colour cannot be the same
     //! distance from both black and white. Each has a contrast ratio near 9:1
@@ -46,6 +56,10 @@ class PuffingBillyField extends WatchUi.DataField {
     private const LABEL_ON_LIGHT = 0x334C66;   // 8.9:1 on white
     private const NAME_ON_DARK = 0x74BEF5;     // 10.4:1 on black
     private const NAME_ON_LIGHT = 0x14508A;    // 8.3:1 on white
+
+    //! The rules separating the sections of the face, in a saturated blue.
+    private const RULE_ON_DARK = 0x54A8FD;     // 8.4:1 on black
+    private const RULE_ON_LIGHT = 0x0D4F9E;    // 8.0:1 on white
 
     //! Colours for the time a projection is ahead or behind the target
     //! finishing time, green when ahead and red when behind. Near 9:1 on their
@@ -204,6 +218,111 @@ class PuffingBillyField extends WatchUi.DataField {
         );
     }
 
+    //! A rule from (x0, y0) to (x1, y1), fading to the background over the
+    //! RULE_FADE of its length nearest (x1, y1).
+    private function drawFadingRule(
+        dc as Dc, x0 as Float, y0 as Float, x1 as Float, y1 as Float,
+        colour as Number, bg as Number
+    ) as Void {
+        var dx = x1 - x0;
+        var dy = y1 - y0;
+        var len = Math.sqrt(dx * dx + dy * dy).toFloat();
+        if (len == 0.0) {
+            return;
+        }
+        var fade = RULE_FADE.toFloat();
+        if (fade > len) { fade = len; }
+        var f0 = 1.0 - fade / len;
+
+        dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
+        if (f0 > 0.0) {
+            dc.drawLine(x0, y0, x0 + f0 * dx, y0 + f0 * dy);
+        }
+        for (var i = 0; i < RULE_FADE_SEGMENTS; i += 1) {
+            var a = f0 + (1.0 - f0) * i / RULE_FADE_SEGMENTS;
+            var b = f0 + (1.0 - f0) * (i + 1) / RULE_FADE_SEGMENTS;
+            var t = (i + 0.5) / RULE_FADE_SEGMENTS;
+            dc.setColor(blend(colour, bg, t), Graphics.COLOR_TRANSPARENT);
+            dc.drawLine(x0 + a * dx, y0 + a * dy, x0 + b * dx, y0 + b * dy);
+        }
+    }
+
+    //! One arm of the rule curved around the heart rate, from its bottom at
+    //! the centre of the face to the inset circle, fading to the background
+    //! over the RULE_FADE of its length nearest the circle. `side` is -1 for
+    //! the left arm and 1 for the right.
+    private function drawHrRuleArm(
+        dc as Dc, w as Number, side as Number, colour as Number, bg as Number
+    ) as Void {
+        var xs = [] as Array<Float>;
+        var ys = [] as Array<Float>;
+        var dx = 0.0;
+        while (true) {
+            var y = _layout.yHrRule - _layout.hrRuleK * dx * dx;
+            if (y < 0.0 || dx >= _face.halfWidthAt((y + 0.5).toNumber())) {
+                break;
+            }
+            xs.add(w / 2.0 + side * dx);
+            ys.add(y);
+            dx += HR_RULE_STEP;
+        }
+        var n = xs.size();
+        if (n < 2) {
+            return;
+        }
+
+        var fromEnd = new [n] as Array<Float>;
+        fromEnd[n - 1] = 0.0;
+        for (var i = n - 2; i >= 0; i -= 1) {
+            var sx = xs[i + 1] - xs[i];
+            var sy = ys[i + 1] - ys[i];
+            fromEnd[i] = fromEnd[i + 1]
+                + Math.sqrt(sx * sx + sy * sy).toFloat();
+        }
+        for (var i = 0; i < n - 1; i += 1) {
+            var d = (fromEnd[i] + fromEnd[i + 1]) / 2.0;
+            var t = d >= RULE_FADE ? 0.0 : 1.0 - d / RULE_FADE;
+            dc.setColor(blend(colour, bg, t), Graphics.COLOR_TRANSPARENT);
+            dc.drawLine(xs[i], ys[i], xs[i + 1], ys[i + 1]);
+        }
+    }
+
+    //! The rules separating the sections of the face: a curve around the
+    //! heart rate, a vertical rule between the standings, a horizontal rule
+    //! between the standings and the paces, and a vertical rule between each
+    //! pair of pace columns. Ends at the inset circle and the lower ends of
+    //! the pace-column rules fade to the background.
+    private function drawRules(
+        dc as Dc, w as Number, colour as Number, bg as Number
+    ) as Void {
+        dc.setPenWidth(RULE_PEN);
+
+        var mid = w / 2.0;
+        var yRule = _layout.yRule.toFloat();
+
+        // The horizontal rule, drawn from the centre to each side.
+        var half = _face.halfWidthAt(_layout.yRule);
+        drawFadingRule(dc, mid, yRule, mid - half, yRule, colour, bg);
+        drawFadingRule(dc, mid, yRule, mid + half, yRule, colour, bg);
+
+        // The vertical rule between the standings, from the curved rule's
+        // bottom to the horizontal rule.
+        dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
+        dc.drawLine(mid, _layout.yHrRule, mid, yRule);
+
+        // The rules between the pace columns, hanging from the horizontal
+        // rule at the midpoints of the gaps between the columns.
+        var xPace = _layout.paceColumn / 2.0;
+        var yEnd = _layout.yPaceRuleEnd.toFloat();
+        drawFadingRule(dc, mid - xPace, yRule, mid - xPace, yEnd, colour, bg);
+        drawFadingRule(dc, mid + xPace, yRule, mid + xPace, yEnd, colour, bg);
+
+        drawHrRuleArm(dc, w, -1, colour, bg);
+        drawHrRuleArm(dc, w, 1, colour, bg);
+
+        dc.setPenWidth(1);
+    }
+
     //! Colour for the time a projection is ahead of or behind the target
     //! finishing time.
     private function standingColour(offS as Float, dark as Boolean) as Number {
@@ -316,6 +435,9 @@ class PuffingBillyField extends WatchUi.DataField {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         var left = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
         var segment = _race.segment();
+
+        // First, so any text that reaches a rule is drawn over it.
+        drawRules(dc, w, dark ? RULE_ON_DARK : RULE_ON_LIGHT, bg);
 
         // The heart rate, with BPM centred below it, then the standings,
         // each centred with its label on its own column: "plan" for the
