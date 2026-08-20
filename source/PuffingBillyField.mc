@@ -1,16 +1,12 @@
 import Toybox.Activity;
-import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
 //! A data field for a race on a fixed course, split into segments by named
-//! waypoints. Given the whole face it shows the distance to the next waypoint,
-//! the target, segment and current paces, the standing of each finish
-//! projection, and a bar giving the shape of the whole course. Given the top half of the display it shows the target-pace
-//! finish projection, and given the bottom half the performance-ratio one, each
-//! with the time ahead or behind the target. Adding the field to both halves of
-//! a screen gives both.
+//! waypoints. It shows the distance to the next waypoint, the target, segment
+//! and current paces, the standing of each finish projection, and a bar
+//! giving the shape of the whole course.
 class PuffingBillyField extends WatchUi.DataField {
 
     //! The distance to the next waypoint is in metres and displayed in km.
@@ -64,18 +60,10 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _face as Face;
     private var _layout as Layout;
 
-    //! Labels for the three pace columns, for the two standings on the
-    //! full-screen face, and for the two projections. The standing and
-    //! projection labels are in display order: the target-pace projection
-    //! first, the performance-ratio one second.
+    //! Labels for the three pace columns and for the two standings, the
+    //! target-pace projection's first and the performance-ratio one's second.
     private var _paceLabels as Array<String>;
     private var _standingLabels as Array<String>;
-    private var _projLabels as Array<String>;
-
-    //! The train shown above the figures of a half-height field given the top
-    //! of the display. drawables.xml imports it without dithering, to preserve
-    //! its limited palette.
-    private var _train as Graphics.BitmapReference;
 
     //! Screen region dimensions and obscurity flags from the last layout. -1
     //! before the first onUpdate().
@@ -93,12 +81,6 @@ class PuffingBillyField extends WatchUi.DataField {
 
         _paceLabels = ["target", "segment", "pace"] as Array<String>;
         _standingLabels = ["plan", "perf"] as Array<String>;
-        _projLabels =
-            ["at target pace", "at current perf. ratio"] as Array<String>;
-
-        _train = Application.loadResource(
-            $.Rez.Drawables.PuffingBillyTrain
-        ) as Graphics.BitmapReference;
 
         _laidOutW = -1;
         _laidOutH = -1;
@@ -141,8 +123,8 @@ class PuffingBillyField extends WatchUi.DataField {
             top = _face.h - h;
         }
 
-        _face.place(top, h);
-        _layout.solve(dc, _projLabels, _train);
+        _face.place(top);
+        _layout.solve(dc);
     }
 
     //! Green through amber to red as a segment's target pace goes from
@@ -325,58 +307,6 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawLine(here, y - proud, here, y + proud);
     }
 
-    //! Draw two runs of text side by side, the pair centred together on the
-    //! face. drawText() takes a single font, and the device a single colour, so
-    //! we measure and place each run separately.
-    private function drawPair(
-        dc as Dc, w as Number, y as Number,
-        left as String, leftFont as FontType, leftColour as Number,
-        right as String, rightFont as FontType, rightColour as Number
-    ) as Void {
-        var gap = _layout.pairGap;
-        var leftW = dc.getTextWidthInPixels(left, leftFont);
-        var rightW = dc.getTextWidthInPixels(right, rightFont);
-        var start = w / 2 - (leftW + gap + rightW) / 2;
-        var justify = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
-
-        dc.setColor(leftColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(start, y, leftFont, left, justify);
-        dc.setColor(rightColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(start + leftW + gap, y, rightFont, right, justify);
-    }
-
-    //! Draw the half-height field: one projected finish time, labelled with the
-    //! pace it assumes, and the time ahead or behind of plan beside it.
-    //!
-    //! The top half shows the target-pace finish, the bottom half the
-    //! performance-ratio one.
-    private function drawHalfScreenField(
-        dc as Dc, w as Number,
-        fg as Number, labelColour as Number, dark as Boolean
-    ) as Void {
-        var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        var lower = _face.belowCentre();
-        var finish = lower ? _race.perfRatioFinishS() : _race.targetFinishS();
-
-        var off = finish - _course.planS;
-        var colour = standingColour(off, dark);
-
-        dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            w / 2, _layout.yProjLabel, Graphics.FONT_XTINY,
-            _projLabels[lower ? 1 : 0], centre
-        );
-        drawPair(
-            dc, w, _layout.yProjValue,
-            Fmt.duration(finish), _layout.figureFont, fg,
-            Fmt.standing(off), _layout.figureFont, colour
-        );
-
-        if (!lower) {
-            dc.drawBitmap(w / 2 - _train.getWidth() / 2, _layout.yTrain, _train);
-        }
-    }
-
     //! Draw the full-screen field: the heart rate, the three paces, the course
     //! bar, and the next waypoint with the distance still to run.
     private function drawFullScreenField(
@@ -514,17 +444,15 @@ class PuffingBillyField extends WatchUi.DataField {
                 "Finished",
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
             );
-        } else if (_layout.half) {
-            drawHalfScreenField(dc, w, fg, labelColour, dark);
         } else {
             drawFullScreenField(dc, w, bg, fg, labelColour, nameColour, dark);
         }
 
-        // The inset circle, for checking on the watch whether the layout
-        // clips under the bezel. Temporary — delete once SAFE_INSET is
-        // settled.
-        dc.setPenWidth(1);
-        dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
-        _face.drawInset(dc);
+        // // The inset circle, for checking on the watch whether the layout
+        // // clips under the bezel. Temporary — delete once SAFE_INSET is
+        // // settled.
+        // dc.setPenWidth(1);
+        // dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
+        // _face.drawInset(dc);
     }
 }

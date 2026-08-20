@@ -19,22 +19,19 @@ class Face {
     var w as Number;
     var h as Number;
 
-    //! Top and height of the field's box, in pixels.
+    //! Top of the field's box, in pixels.
     var offY as Number;
-    var fieldH as Number;
 
     function initialize() {
         var settings = System.getDeviceSettings();
         w = settings.screenWidth;
         h = settings.screenHeight;
         offY = 0;
-        fieldH = h;
     }
 
-    //! Set the field's box.
-    function place(top as Number, height as Number) as Void {
+    //! Set the top of the field's box.
+    function place(top as Number) as Void {
         offY = top;
-        fieldH = height;
     }
 
     //! Half the width available at y down the field, within the display circle
@@ -65,24 +62,9 @@ class Face {
         return offY + y < h / 2;
     }
 
-    //! Whether the field's centre is below the display's centre, and so whether
-    //! the near end of its band — the wider end — is its top or its bottom.
-    function belowCentre() as Boolean {
-        return 2 * offY + fieldH > h;
-    }
-
     //! The inset circle, for checking on the watch how far the bezel actually
     //! covers. Temporary — delete once SAFE_INSET is settled.
     function drawInset(dc as Dc) as Void {
         dc.drawCircle(w / 2, h / 2 - offY, w / 2 - SAFE_INSET);
-    }
-
-    //! Distance from the middle of the display to the near end of the field's
-    //! band. Zero if the field contains the display's centre.
-    function nearEdge() as Float {
-        var d = belowCentre()
-            ? offY - h / 2.0
-            : h / 2.0 - (offY + fieldH);
-        return d > 0.0 ? d : 0.0;
     }
 }

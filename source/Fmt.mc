@@ -19,17 +19,6 @@ module Fmt {
         return (whole / 60).format("%d") + ":" + (whole % 60).format("%02d");
     }
 
-    //! A duration as h:mm:ss, or m:ss under the hour.
-    function duration(s as Float) as String {
-        var whole = (s + 0.5).toNumber();
-        var seconds = (whole % 60).format("%02d");
-        if (whole < 3600) {
-            return (whole / 60).format("%d") + ":" + seconds;
-        }
-        return (whole / 3600).format("%d") + ":"
-            + (whole / 60 % 60).format("%02d") + ":" + seconds;
-    }
-
     //! Whether standing() draws this offset with a minus sign, i.e. time in
     //! hand by the same rounded figure the string shows. Colour standing()'s
     //! output by this, not by the raw offset, so the colour and the sign always
