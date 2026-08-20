@@ -225,9 +225,15 @@ class Race {
 
     //! Plan time still to run, in seconds: what is left of the current segment
     //! at its target pace, plus every later segment at theirs. Uses the segment
-    //! being run, not the displayed one.
+    //! being run, not the displayed one. Remaining distance is clamped at zero,
+    //! so in overdistance the projections treat the runner as at the end of
+    //! the segment.
     private function planRemainingS() as Float {
-        return remainingInM(_next) / M_PER_KM * _course.paceS(_next)
+        var remaining = remainingInM(_next);
+        if (remaining < 0.0) {
+            remaining = 0.0;
+        }
+        return remaining / M_PER_KM * _course.paceS(_next)
             + _course.planAfterS(_next);
     }
 
