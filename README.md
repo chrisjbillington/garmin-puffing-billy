@@ -32,11 +32,11 @@ Data field contents
 The data field uses the full screen. From top to bottom and left to right:
 
 - **Heart rate** - heart rate in bpm.
-- **Plan standing** ("plan") - time ahead (negative, green) or behind (positive, red)
-  of the target finishing time, if the rest of the race is run at target paces.
-- **Performance standing** ("perf") - the same, but if the rest of the race is instead
-  run at the current performance ratio: the fraction of target pace you are currently
-  running, measured as an exponential moving average over a distance scale
+- **Current time ahead/behind** - time ahead (negative, green) or behind (positive, red)
+  of the target finishing time, if the rest of the race is run at target pace.
+- **Projected time ahead/behind** - the same, but if the rest of the race is instead run
+  at the current performance ratio: the fraction of target pace at which you are
+  currently running, measured as an exponential moving average over a distance scale
   `perf_ratio_scale`, 500 m by default, i.e. based on your performance over the last
   0.5–1 km or so (with time spent slower than 10 min/km not counted).
 - **Target pace** - target pace for current segment in minutes per km. After advancing
