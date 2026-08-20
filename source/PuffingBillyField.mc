@@ -387,8 +387,8 @@ class PuffingBillyField extends WatchUi.DataField {
         var left = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
         var segment = _race.segment();
 
-        // The heart rate, with BPM at its right, then the standings, each
-        // centred with its label on its own column: "plan" for the
+        // The heart rate, with BPM centred below it, then the standings,
+        // each centred with its label on its own column: "plan" for the
         // target-pace projection on the left, "perf" for the
         // performance-ratio one on the right.
         var hr = _race.heartRate;
@@ -397,11 +397,7 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.drawText(w / 2, _layout.yHr, _layout.figureFont, hrText, centre);
 
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            w / 2 + dc.getTextWidthInPixels(hrText, _layout.figureFont) / 2
-                + _layout.labelPad,
-            _layout.yBpm, _layout.bpmFont, "BPM", left
-        );
+        dc.drawText(w / 2, _layout.yBpm, _layout.bpmFont, "BPM", centre);
         dc.drawText(
             _layout.xPlan, _layout.yStandingLabel, Graphics.FONT_XTINY,
             _standingLabels[0], centre
@@ -459,23 +455,30 @@ class PuffingBillyField extends WatchUi.DataField {
             w / 2, _layout.yName, Graphics.FONT_TINY, _course.name(segment), centre
         );
 
-        // The remaining distance, centred, with km at its right. The value is
-        // five characters long if the distance is negative on the approach to
-        // a gate, and red when negative, i.e. the runner has exceeded the
-        // nominal segment length without a detected gate crossing.
+        // The remaining distance, its digits centred with km at their right.
+        // On the approach to a gate the distance can be negative, meaning
+        // the runner has exceeded the nominal segment length without a
+        // detected gate crossing; it is then red, and its sign hangs to the
+        // left of the centred digits.
         var remainingM = _race.remainingM();
         var remText = (remainingM / M_PER_KM).format("%.2f");
+        var remDigits = remText;
+        if (remainingM < 0.0) {
+            remDigits = remText.substring(1, remText.length()) as String;
+        }
+        var remHalf =
+            dc.getTextWidthInPixels(remDigits, _layout.figureFont) / 2;
         var remainingColour = (remainingM < 0.0)
             ? (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT)
             : fg;
         dc.setColor(remainingColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            w / 2, _layout.yRemaining, _layout.figureFont, remText, centre
+            w / 2 + remHalf, _layout.yRemaining, _layout.figureFont, remText,
+            Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER
         );
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            w / 2 + dc.getTextWidthInPixels(remText, _layout.figureFont) / 2
-                + _layout.labelPad,
+            w / 2 + remHalf + _layout.labelPad,
             _layout.yKm, Graphics.FONT_XTINY, "km", left
         );
 

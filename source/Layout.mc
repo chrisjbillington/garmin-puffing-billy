@@ -35,9 +35,14 @@ class Layout {
     private const FIGURE_FONT_PX = 70;
     private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
 
-    //! The face for the BPM label, which is drawn as small caps: capitals at
-    //! the x-height of the other labels.
-    private const SMALL_CAPS_FACE = "RobotoRegular";
+    //! The BPM label's face, and its size as a fraction of the other
+    //! labels' font height.
+    private const BPM_FONT_FACE = "RobotoRegular";
+    private const BPM_FONT_FRAC = 0.87;
+
+    //! The gap between the heart rate's baseline and the top of BPM below
+    //! it, in pixels.
+    private const BPM_GAP = 8;
 
     //! The same face, sized for a half-screen field. A finish time and its
     //! standing share a line, so the font size sets both the width of that line
@@ -78,9 +83,9 @@ class Layout {
     var yName as Number;
     var yRemaining as Number;
 
-    //! Draw positions of the BPM and km labels, beside the heart rate and
-    //! the remaining distance, and BPM's small-caps font. FONT_XTINY if the
-    //! device cannot supply the scalable face.
+    //! Draw positions of the BPM and km labels, below the heart rate and
+    //! beside the remaining distance, and BPM's reduced font. FONT_XTINY if
+    //! the device cannot supply the scalable face.
     var yBpm as Number;
     var yKm as Number;
     var bpmFont as FontType;
@@ -195,7 +200,7 @@ class Layout {
     //! Solve the vertical rhythm of the whole face: six rows separated by a
     //! uniform gap.
     //!
-    //!     A  heart rate, digit ink top to baseline, with BPM at its right
+    //!     A  heart rate digits, ink top to baseline
     //!     B  standings and their labels, label x-height top to digit
     //!        baseline; label ascenders extend above the row
     //!     C  paces and their labels, the same extents
@@ -205,10 +210,11 @@ class Layout {
     //!        their right
     //!
     //! The top of A, for a three-digit heart rate, is on the inset circle,
-    //! and so is the bottom of F for its widest figures; A is lowered, and F
-    //! raised, where BPM or km would cross the circle. The five gaps between
-    //! the rows are equal. BPM shares the heart rate's baseline, and km the
-    //! distance figures' ink top.
+    //! and so is the bottom of F for its widest figures; F is raised where
+    //! km would cross the circle. The five gaps between the rows are equal.
+    //! km shares the distance figures' ink top. BPM is centred below the
+    //! heart rate, BPM_GAP under its baseline, and takes no part in the
+    //! spacing.
     private function solveFull(dc as Dc) as Void {
         var h = dc.getHeight();
 
@@ -221,31 +227,26 @@ class Layout {
         var bearing = Roboto.digitBearing(figureFont);
 
         bpmFont = Graphics.FONT_XTINY;
-        var smallCaps = Graphics.getVectorFont({
-            :face => SMALL_CAPS_FACE,
-            :size => (Graphics.getFontHeight(Graphics.FONT_XTINY)
-                * Roboto.X_HEIGHT / Roboto.CAP).toNumber()
+        var bpmScaled = Graphics.getVectorFont({
+            :face => BPM_FONT_FACE,
+            :size => (BPM_FONT_FRAC
+                * Graphics.getFontHeight(Graphics.FONT_XTINY)).toNumber()
         });
-        if (smallCaps != null) { bpmFont = smallCaps; }
+        if (bpmScaled != null) { bpmFont = bpmScaled; }
         var bpmCap = Roboto.capHeight(bpmFont);
 
-        // Row A.
+        // Row A, with BPM below its baseline.
         var hrW = dc.getTextWidthInPixels("888", figureFont).toFloat();
         var hrTop = h / 2.0 - _face.reachFor(hrW / 2.0 - bearing);
-        var bpmRight = hrW / 2.0 + labelPad
-            + dc.getTextWidthInPixels("BPM", bpmFont);
-        var bpmMin = h / 2.0 - _face.reachFor(bpmRight);
-        if (hrTop + figCap - bpmCap < bpmMin) {
-            hrTop = bpmMin + bpmCap - figCap;
-        }
         var hrBase = hrTop + figCap;
         yHr = Roboto.yForBaseline(hrBase, figureFont);
-        yBpm = Roboto.yForBaseline(hrBase, bpmFont);
+        yBpm = Roboto.yForBaseline(hrBase + BPM_GAP + bpmCap, bpmFont);
 
-        // Row F. The figures' widest form is five characters with a leading
-        // minus. km's ink has no descender, so its ink bottom is its
-        // baseline.
-        var remW = dc.getTextWidthInPixels("-8.88", figureFont).toFloat();
+        // Row F. The figures are centred without their sign, which hangs to
+        // their left when the distance is negative, so the geometry uses the
+        // unsigned four-character form. km's ink has no descender, so its
+        // ink bottom is its baseline.
+        var remW = dc.getTextWidthInPixels("8.88", figureFont).toFloat();
         var remBase = h / 2.0 + _face.reachFor(remW / 2.0 - bearing);
         var kmRight = remW / 2.0 + labelPad
             + dc.getTextWidthInPixels("km", Graphics.FONT_XTINY);
