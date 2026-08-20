@@ -7,10 +7,16 @@ import Toybox.Lang;
 //! baseline and by the ink above and below it, as measured by Roboto.
 class Layout {
 
-    //! Gap D, between a pace label and the digits below it, as a fraction of
-    //! the gap A = B = C used higher up the face. At 1 the label is centred
-    //! between the rule and the digits.
+    //! Gap between a projection label and the figures below it on the
+    //! half-height field, as a fraction of the gap from the figures to the
+    //! near end of the band.
     private const LABEL_GAP_RATIO = 0.6;
+
+    //! Gap between a label's baseline and the top of the digits below it on
+    //! the whole face, as a fraction of the label font's height. Places the
+    //! pace labels above the pace digits and the standing labels above the
+    //! standings.
+    private const LABEL_GAP = 0.4;
 
     //! The progress bar's thickness, as a divisor of the display width. Given
     //! 390px that is a 10px bar.
@@ -28,6 +34,10 @@ class Layout {
     //! between the three pace columns.
     private const FIGURE_FONT_PX = 70;
     private const FIGURE_FONT_FACE = "RobotoCondensedRegular";
+
+    //! The face for the BPM label, which is drawn as small caps: capitals at
+    //! the x-height of the other labels.
+    private const SMALL_CAPS_FACE = "RobotoRegular";
 
     //! The same face, sized for a half-screen field. A finish time and its
     //! standing share a line, so the font size sets both the width of that line
@@ -49,18 +59,37 @@ class Layout {
     var barPen as Number;
     var pairGap as Number;
 
+    //! The gap between a run of figures and the label at its side, in pixels.
+    var labelPad as Number;
+
     //! Distance from the centre of the face to the centre of an outer pace
     //! column.
     var paceColumn as Float;
 
-    //! The rows of the whole face.
+    //! The rows of the whole face. Each standing and its label are centred
+    //! on one of the two standing columns, the label the label gap above the
+    //! standing.
     var yHr as Number;
-    var yRule as Number;
+    var yStandingLabel as Number;
+    var yStanding as Number;
     var yPaceLabel as Number;
     var yPaceValue as Number;
     var yBar as Number;
     var yName as Number;
     var yRemaining as Number;
+
+    //! Draw positions of the BPM and km labels, beside the heart rate and
+    //! the remaining distance, and BPM's small-caps font. FONT_XTINY if the
+    //! device cannot supply the scalable face.
+    var yBpm as Number;
+    var yKm as Number;
+    var bpmFont as FontType;
+
+    //! Centres of the standings' columns: the midpoints of the two halves of
+    //! the chord at the standings' mid-ink height. Each standing and its
+    //! label are centred on one of these.
+    var xPlan as Number;
+    var xPerf as Number;
 
     //! The rows of the half-height field: the line naming its projection, the
     //! line of figures under it, and the train drawn in the rest of the band
@@ -76,14 +105,21 @@ class Layout {
         figureFont = Graphics.FONT_LARGE;
         barPen = 1;
         pairGap = 1;
+        labelPad = 3;
         paceColumn = 0.0;
         yHr = 0;
-        yRule = 0;
+        yStandingLabel = 0;
+        yStanding = 0;
         yPaceLabel = 0;
         yPaceValue = 0;
         yBar = 0;
         yName = 0;
         yRemaining = 0;
+        yBpm = 0;
+        yKm = 0;
+        bpmFont = Graphics.FONT_XTINY;
+        xPlan = 0;
+        xPerf = 0;
         yProjLabel = 0;
         yProjValue = 0;
         yTrain = 0;
@@ -156,61 +192,100 @@ class Layout {
         return baselines;
     }
 
-    //! Solve the vertical rhythm of the whole face.
+    //! Solve the vertical rhythm of the whole face: six rows separated by a
+    //! uniform gap.
     //!
-    //! The gaps are
+    //!     A  heart rate, digit ink top to baseline, with BPM at its right
+    //!     B  standings and their labels, label x-height top to digit
+    //!        baseline; label ascenders extend above the row
+    //!     C  paces and their labels, the same extents
+    //!     D  the bar, excluding the position marker
+    //!     E  waypoint name, cap top to baseline
+    //!     F  remaining-distance figures, ink top to baseline, with km at
+    //!        their right
     //!
-    //!     A  top of the display to the top of the heart rate's digits
-    //!     B  heart rate baseline to the rule
-    //!     C  rule to the top of the pace labels' x-height
-    //!     D  pace label baseline to the top of the pace digits
-    //!     E  pace baseline to the top of the bar
-    //!     F  bottom of the bar to the cap height of the waypoint name
-    //!     G  name baseline to the top of the remaining-distance digits
-    //!     H  its baseline to the bottom of the display
-    //!
-    //! The constraints are A = B = C = E and F = G = H, with D a set fraction
-    //! of C and the pace digits centred on the face. That is seven equations
-    //! for the seven rows, solved top down: centring places the paces, the
-    //! group above them fills the span down to the pace digits, its gap sets
-    //! the bar position, and the bar spans the group below.
+    //! The top of A, for a three-digit heart rate, is on the inset circle,
+    //! and so is the bottom of F for its widest figures; A is lowered, and F
+    //! raised, where BPM or km would cross the circle. The five gaps between
+    //! the rows are equal. BPM shares the heart rate's baseline, and km the
+    //! distance figures' ink top.
     private function solveFull(dc as Dc) as Void {
         var h = dc.getHeight();
 
         var figCap = Roboto.capHeight(figureFont);
         var labelX = Roboto.xHeight(Graphics.FONT_XTINY);
+        var labelUp = Roboto.inkUp(Graphics.FONT_XTINY);
         var nameCap = Roboto.capHeight(Graphics.FONT_TINY);
+        var labelGap =
+            LABEL_GAP * Graphics.getFontHeight(Graphics.FONT_XTINY);
+        var bearing = Roboto.digitBearing(figureFont);
 
-        var paceTop = h / 2.0 - figCap / 2.0;
-        var paceBase = h / 2.0 + figCap / 2.0;
+        bpmFont = Graphics.FONT_XTINY;
+        var smallCaps = Graphics.getVectorFont({
+            :face => SMALL_CAPS_FACE,
+            :size => (Graphics.getFontHeight(Graphics.FONT_XTINY)
+                * Roboto.X_HEIGHT / Roboto.CAP).toNumber()
+        });
+        if (smallCaps != null) { bpmFont = smallCaps; }
+        var bpmCap = Roboto.capHeight(bpmFont);
+
+        // Row A.
+        var hrW = dc.getTextWidthInPixels("888", figureFont).toFloat();
+        var hrTop = h / 2.0 - _face.reachFor(hrW / 2.0 - bearing);
+        var bpmRight = hrW / 2.0 + labelPad
+            + dc.getTextWidthInPixels("BPM", bpmFont);
+        var bpmMin = h / 2.0 - _face.reachFor(bpmRight);
+        if (hrTop + figCap - bpmCap < bpmMin) {
+            hrTop = bpmMin + bpmCap - figCap;
+        }
+        var hrBase = hrTop + figCap;
+        yHr = Roboto.yForBaseline(hrBase, figureFont);
+        yBpm = Roboto.yForBaseline(hrBase, bpmFont);
+
+        // Row F. The figures' widest form is five characters with a leading
+        // minus. km's ink has no descender, so its ink bottom is its
+        // baseline.
+        var remW = dc.getTextWidthInPixels("-8.88", figureFont).toFloat();
+        var remBase = h / 2.0 + _face.reachFor(remW / 2.0 - bearing);
+        var kmRight = remW / 2.0 + labelPad
+            + dc.getTextWidthInPixels("km", Graphics.FONT_XTINY);
+        var kmMax = h / 2.0 + _face.reachFor(kmRight);
+        if (remBase - figCap + labelUp > kmMax) {
+            remBase = kmMax - labelUp + figCap;
+        }
+        yRemaining = Roboto.yForBaseline(remBase, figureFont);
+        yKm = Roboto.yForBaseline(
+            remBase - figCap + labelUp, Graphics.FONT_XTINY
+        );
+
+        // Rows B to E, spaced by the uniform gap.
+        var labelled = labelX + labelGap + figCap;
+        var gap = (remBase - hrTop - 2.0 * figCap - 2.0 * labelled
+            - barPen - nameCap) / 5.0;
+        if (gap < 0.0) { gap = 0.0; }
+
+        var standingBase = hrBase + gap + labelled;
+        var paceBase = standingBase + gap + labelled;
+        var barTop = paceBase + gap;
+        var nameBase = barTop + barPen + gap + nameCap;
+
+        yStanding = Roboto.yForBaseline(standingBase, figureFont);
+        yStandingLabel = Roboto.yForBaseline(
+            standingBase - figCap - labelGap, Graphics.FONT_XTINY
+        );
         yPaceValue = Roboto.yForBaseline(paceBase, figureFont);
+        yPaceLabel = Roboto.yForBaseline(
+            paceBase - figCap - labelGap, Graphics.FONT_XTINY
+        );
+        yBar = (barTop + barPen / 2.0 + 0.5).toNumber();
+        yName = Roboto.yForBaseline(nameBase, Graphics.FONT_TINY);
 
-        // The heart rate, the rule and the pace label, spanning the display top
-        // to the pace digits: gaps A, B and C before them and D closing on the
-        // digits. The rule has no ink.
-        var topUp = [figCap, 0.0, labelX] as Array<Float>;
-        var topDown = [0.0, 0.0, 0.0] as Array<Float>;
-        var topGaps = [1.0, 1.0, 1.0, LABEL_GAP_RATIO] as Array<Float>;
-        var above = unitGap(paceTop, topUp, topDown, topGaps);
-        var upperRows = stack(0.0, above, topUp, topDown, topGaps);
-        yHr = Roboto.yForBaseline(upperRows[0], figureFont);
-        yRule = (upperRows[1] + 0.5).toNumber();
-        yPaceLabel = Roboto.yForBaseline(upperRows[2], Graphics.FONT_XTINY);
-
-        // E closes the top group; yBar is the bar's centre, half a pen below
-        // its top edge.
-        yBar = (paceBase + above + barPen / 2.0 + 0.5).toNumber();
-
-        // The waypoint name and the distance to it, spanning the bar to the
-        // bottom of the display: F and G before them and H closing.
-        var barBottom = (yBar + barPen / 2).toFloat();
-        var lowUp = [nameCap, figCap] as Array<Float>;
-        var lowDown = [0.0, 0.0] as Array<Float>;
-        var lowGaps = [1.0, 1.0, 1.0] as Array<Float>;
-        var below = unitGap(h - barBottom, lowUp, lowDown, lowGaps);
-        var lowerRows = stack(barBottom, below, lowUp, lowDown, lowGaps);
-        yName = Roboto.yForBaseline(lowerRows[0], Graphics.FONT_TINY);
-        yRemaining = Roboto.yForBaseline(lowerRows[1], figureFont);
+        var chordHalf = _face.halfWidthAt(
+            (standingBase - figCap / 2.0 + 0.5).toNumber()
+        );
+        var mid = dc.getWidth() / 2.0;
+        xPlan = (mid - chordHalf / 2.0 + 0.5).toNumber();
+        xPerf = (mid + chordHalf / 2.0 + 0.5).toNumber();
 
         paceColumn = paceColumnOffset(dc, paceBase);
     }
@@ -284,8 +359,8 @@ class Layout {
     //!
     //! Measured at the digits' baseline. Fmt.pace() emits only digits, a colon
     //! and a dash, none of which descend, so the row's ink ends at the
-    //! baseline. The ink is centred on the face, so the top of the digits is as
-    //! far above the middle as the baseline is below it.
+    //! baseline. The row is below the middle of the display, so the baseline
+    //! is where the circle is narrowest for it.
     //!
     //! The pace row sets the column offset, since it is wider than the label
     //! row centred on the same columns.

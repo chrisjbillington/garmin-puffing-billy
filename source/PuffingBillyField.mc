@@ -6,8 +6,8 @@ import Toybox.WatchUi;
 
 //! A data field for a race on a fixed course, split into segments by named
 //! waypoints. Given the whole face it shows the distance to the next waypoint,
-//! the target, segment and current paces, and a bar giving the shape of the
-//! whole course. Given the top half of the display it shows the target-pace
+//! the target, segment and current paces, the standing of each finish
+//! projection, and a bar giving the shape of the whole course. Given the top half of the display it shows the target-pace
 //! finish projection, and given the bottom half the performance-ratio one, each
 //! with the time ahead or behind the target. Adding the field to both halves of
 //! a screen gives both.
@@ -64,9 +64,12 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _face as Face;
     private var _layout as Layout;
 
-    //! Labels for the three pace columns and for the two projections. The
-    //! projection labels are in display order, top half first.
+    //! Labels for the three pace columns, for the two standings on the
+    //! full-screen face, and for the two projections. The standing and
+    //! projection labels are in display order: the target-pace projection
+    //! first, the performance-ratio one second.
     private var _paceLabels as Array<String>;
+    private var _standingLabels as Array<String>;
     private var _projLabels as Array<String>;
 
     //! The train shown above the figures of a half-height field given the top
@@ -89,6 +92,7 @@ class PuffingBillyField extends WatchUi.DataField {
         _layout = new Layout(_face);
 
         _paceLabels = ["target", "segment", "pace"] as Array<String>;
+        _standingLabels = ["plan", "perf"] as Array<String>;
         _projLabels =
             ["at target pace", "at current perf. ratio"] as Array<String>;
 
@@ -218,11 +222,23 @@ class PuffingBillyField extends WatchUi.DataField {
         );
     }
 
-    //! A horizontal divider at y, spanning the middle three fifths of the width
-    //! available there.
-    private function drawRule(dc as Dc, w as Number, y as Number) as Void {
-        var half = _face.halfWidthAt(y) * 3.0 / 5.0;
-        dc.drawLine(w / 2 - half, y, w / 2 + half, y);
+    //! Colour for the time a projection is ahead of or behind the target
+    //! finishing time.
+    private function standingColour(offS as Float, dark as Boolean) as Number {
+        return Fmt.ahead(offS)
+            ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
+            : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
+    }
+
+    //! One standing, centred on x.
+    private function drawStanding(
+        dc as Dc, x as Number, offS as Float, dark as Boolean
+    ) as Void {
+        dc.setColor(standingColour(offS, dark), Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            x, _layout.yStanding, _layout.figureFont, Fmt.standing(offS),
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+        );
     }
 
     //! Race progression as a horizontal bar centred on y, with a marker at the
@@ -343,9 +359,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var finish = lower ? _race.perfRatioFinishS() : _race.targetFinishS();
 
         var off = finish - _course.planS;
-        var colour = Fmt.ahead(off)
-            ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
-            : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
+        var colour = standingColour(off, dark);
 
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
@@ -370,13 +384,38 @@ class PuffingBillyField extends WatchUi.DataField {
         labelColour as Number, nameColour as Number, dark as Boolean
     ) as Void {
         var centre = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
+        var left = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
         var segment = _race.segment();
 
+        // The heart rate, with BPM at its right, then the standings, each
+        // centred with its label on its own column: "plan" for the
+        // target-pace projection on the left, "perf" for the
+        // performance-ratio one on the right.
         var hr = _race.heartRate;
-        drawPair(
-            dc, w, _layout.yHr,
-            (hr == null ? "---" : hr.format("%d")), _layout.figureFont, fg,
-            "BPM", Graphics.FONT_XTINY, labelColour
+        var hrText = hr == null ? "---" : hr.format("%d");
+        dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(w / 2, _layout.yHr, _layout.figureFont, hrText, centre);
+
+        dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            w / 2 + dc.getTextWidthInPixels(hrText, _layout.figureFont) / 2
+                + _layout.labelPad,
+            _layout.yBpm, _layout.bpmFont, "BPM", left
+        );
+        dc.drawText(
+            _layout.xPlan, _layout.yStandingLabel, Graphics.FONT_XTINY,
+            _standingLabels[0], centre
+        );
+        dc.drawText(
+            _layout.xPerf, _layout.yStandingLabel, Graphics.FONT_XTINY,
+            _standingLabels[1], centre
+        );
+
+        drawStanding(
+            dc, _layout.xPlan, _race.targetFinishS() - _course.planS, dark
+        );
+        drawStanding(
+            dc, _layout.xPerf, _race.perfRatioFinishS() - _course.planS, dark
         );
 
         // Three pace columns centred on the middle of the face, each label
@@ -420,25 +459,25 @@ class PuffingBillyField extends WatchUi.DataField {
             w / 2, _layout.yName, Graphics.FONT_TINY, _course.name(segment), centre
         );
 
-        // The face is narrow this near the bottom, and this row is the widest
-        // of the three: the value is five characters long if the distance is
-        // negative on the approach to a gate, plus "km" after it. The
-        // distance is red when negative, i.e. the runner has exceeded the
+        // The remaining distance, centred, with km at its right. The value is
+        // five characters long if the distance is negative on the approach to
+        // a gate, and red when negative, i.e. the runner has exceeded the
         // nominal segment length without a detected gate crossing.
         var remainingM = _race.remainingM();
+        var remText = (remainingM / M_PER_KM).format("%.2f");
         var remainingColour = (remainingM < 0.0)
             ? (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT)
             : fg;
-        drawPair(
-            dc, w, _layout.yRemaining,
-            (remainingM / M_PER_KM).format("%.2f"),
-            _layout.figureFont, remainingColour,
-            "km", Graphics.FONT_XTINY, labelColour
+        dc.setColor(remainingColour, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            w / 2, _layout.yRemaining, _layout.figureFont, remText, centre
         );
-
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
-        dc.setPenWidth(1);
-        drawRule(dc, w, _layout.yRule);
+        dc.drawText(
+            w / 2 + dc.getTextWidthInPixels(remText, _layout.figureFont) / 2
+                + _layout.labelPad,
+            _layout.yKm, Graphics.FONT_XTINY, "km", left
+        );
 
         // Last, because drawBar() leaves the pen width and colour set.
         drawBar(dc, w, _layout.yBar, fg);
@@ -460,7 +499,9 @@ class PuffingBillyField extends WatchUi.DataField {
         var w = dc.getWidth();
 
         // After the final gate, centre "Finished" on its cap height, like the
-        // pace rows.
+        // pace rows. Otherwise, when the field is given half a data screen, we
+        // show a projected finish time, and given the whole screen the pace,
+        // heart rate and current segment info.
         if (_race.finished()) {
             var font = _layout.figureFont;
             var capMid = dc.getHeight() / 2.0 + Roboto.capHeight(font) / 2.0;
@@ -470,15 +511,17 @@ class PuffingBillyField extends WatchUi.DataField {
                 "Finished",
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
             );
-            return;
-        }
-
-        // When the field is given half a data screen, we show a projected
-        // finish time, otherwise pace, heart rate and current segment info
-        if (_layout.half) {
+        } else if (_layout.half) {
             drawHalfScreenField(dc, w, fg, labelColour, dark);
         } else {
             drawFullScreenField(dc, w, bg, fg, labelColour, nameColour, dark);
         }
+
+        // The inset circle, for checking on the watch whether the layout
+        // clips under the bezel. Temporary — delete once SAFE_INSET is
+        // settled.
+        dc.setPenWidth(1);
+        dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
+        _face.drawInset(dc);
     }
 }

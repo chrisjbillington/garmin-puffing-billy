@@ -1,3 +1,4 @@
+import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
 import Toybox.System;
@@ -12,7 +13,7 @@ class Face {
     //! Clearance kept from the edge of the display. The watch periodically
     //! shifts the whole display by a few pixels to limit burn-in, which
     //! occludes regions close to the edge.
-    private const SAFE_INSET = 10;
+    private const SAFE_INSET = 8;
 
     //! The display, in pixels.
     var w as Number;
@@ -68,6 +69,12 @@ class Face {
     //! the near end of its band — the wider end — is its top or its bottom.
     function belowCentre() as Boolean {
         return 2 * offY + fieldH > h;
+    }
+
+    //! The inset circle, for checking on the watch how far the bezel actually
+    //! covers. Temporary — delete once SAFE_INSET is settled.
+    function drawInset(dc as Dc) as Void {
+        dc.drawCircle(w / 2, h / 2 - offY, w / 2 - SAFE_INSET);
     }
 
     //! Distance from the middle of the display to the near end of the field's
