@@ -37,8 +37,8 @@ The data field uses the full screen. From top to bottom and left to right:
 - **Projected time ahead/behind** - the same, but if the rest of the race is instead run
   at the current performance ratio: the fraction of target pace at which you are
   currently running, measured as an exponential moving average over a distance scale
-  `perf_ratio_scale`, 500 m by default, i.e. based on your performance over the last
-  0.5–1 km or so (with time spent slower than 10 min/km not counted).
+  `perf_ratio_scale`, 250 m by default, i.e. based on your performance over the last
+  0.25–0.5 km or so (with time spent slower than 10 min/km not counted).
 - **Target pace** - target pace for current segment in minutes per km. After advancing
   to a new segment, the new target pace is highlighted in the segment's colour from the
   progress bar.
@@ -258,5 +258,5 @@ Brief summary of what each file in `source/` is for:
 - `Face.mc` - watch-face geometry and details of the screen region the field has been
   assigned.
 - `Roboto.mc` - glyph metrics for the font we use.
-- `Fmt.mc` - string formatting of paces and standings.
+- `Fmt.mc` - string formatting of paces and time ahead/behind.
 
