@@ -33,7 +33,7 @@ class PuffingBillyField extends WatchUi.DataField {
     //! the label font's height. The pill's corner radius is a quarter of its
     //! own height.
     private const PILL_MARGIN_X = 0.3;
-    private const PILL_MARGIN_Y = 0.1;
+    private const PILL_MARGIN_Y = 0.05;
 
     //! Labels and rules, in a slate blue dimmer than the foreground. The
     //! upcoming waypoint is a value rather than a label, and is a blue of
@@ -80,7 +80,7 @@ class PuffingBillyField extends WatchUi.DataField {
         _layout = new Layout(_face);
 
         _paceLabels = ["target", "segment", "pace"] as Array<String>;
-        _standingLabels = ["plan", "perf"] as Array<String>;
+        _standingLabels = ["curr", "proj"] as Array<String>;
 
         _laidOutW = -1;
         _laidOutH = -1;

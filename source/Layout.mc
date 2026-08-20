@@ -10,7 +10,7 @@ class Layout {
     //! Gap between a label's baseline and the top of the digits below it, as
     //! a fraction of the label font's height. Places the pace labels above
     //! the pace digits and the standing labels above the standings.
-    private const LABEL_GAP = 0.4;
+    private const LABEL_GAP = 0.55;
 
     //! The progress bar's thickness, as a divisor of the display width. Given
     //! 390px that is a 10px bar.
@@ -28,11 +28,11 @@ class Layout {
     //! The BPM label's face, and its size as a fraction of the other
     //! labels' font height.
     private const BPM_FONT_FACE = "RobotoRegular";
-    private const BPM_FONT_FRAC = 0.87;
+    private const BPM_FONT_FRAC = 0.8;
 
     //! The gap between the heart rate's baseline and the top of BPM below
     //! it, in pixels.
-    private const BPM_GAP = 8;
+    private const BPM_GAP = 10;
 
     private var _face as Face;
 
