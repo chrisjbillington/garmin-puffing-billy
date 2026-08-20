@@ -6,8 +6,8 @@ import Toybox.WatchUi;
 
 //! A data field for a race on a fixed course, split into segments by named
 //! waypoints. It shows the distance to the next waypoint, the target, segment
-//! and current paces, the standing of each finish projection, and a bar
-//! giving the shape of the whole course.
+//! and current paces, the current and projected times ahead/behind, and a
+//! bar giving the shape of the whole course.
 class PuffingBillyField extends WatchUi.DataField {
 
     //! The distance to the next waypoint is in metres and displayed in km.
@@ -27,7 +27,7 @@ class PuffingBillyField extends WatchUi.DataField {
 
     //! Mix fraction from the segment's colour towards the foreground for the
     //! highlight. Gives the segment colours a contrast ratio of about 9:1 with
-    //! the background, the same as the labels and standings.
+    //! the background, the same as the labels and ahead/behind times.
     private const HIGHLIGHT_LIFT = 0.45;
 
     //! The margin around the target pace label inside its pill, as fractions of
@@ -61,8 +61,8 @@ class PuffingBillyField extends WatchUi.DataField {
     private const RULE_ON_DARK = 0x54A8FD;     // 8.4:1 on black
     private const RULE_ON_LIGHT = 0x0D4F9E;    // 8.0:1 on white
 
-    //! Colours for the time a projection is ahead or behind the target
-    //! finishing time, green when ahead and red when behind. Near 9:1 on their
+    //! Colours for the times ahead/behind the target finishing time, green
+    //! when ahead and red when behind. Near 9:1 on their
     //! own background, the same contrast ratio as the labels.
     private const AHEAD_ON_DARK = 0x4CCB6A;    // 10.1:1 on black
     private const AHEAD_ON_LIGHT = 0x0A5A1E;   // 8.4:1 on white
@@ -74,10 +74,10 @@ class PuffingBillyField extends WatchUi.DataField {
     private var _face as Face;
     private var _layout as Layout;
 
-    //! Labels for the three pace columns and for the two standings, the
-    //! target-pace projection's first and the performance-ratio one's second.
+    //! Labels for the three pace columns and for the two ahead/behind times,
+    //! the current time's first and the projected time's second.
     private var _paceLabels as Array<String>;
-    private var _standingLabels as Array<String>;
+    private var _aheadBehindLabels as Array<String>;
 
     //! Screen region dimensions and obscurity flags from the last layout. -1
     //! before the first onUpdate().
@@ -94,7 +94,7 @@ class PuffingBillyField extends WatchUi.DataField {
         _layout = new Layout(_face);
 
         _paceLabels = ["target", "segment", "pace"] as Array<String>;
-        _standingLabels = ["curr", "proj"] as Array<String>;
+        _aheadBehindLabels = ["curr", "proj"] as Array<String>;
 
         _laidOutW = -1;
         _laidOutH = -1;
@@ -288,10 +288,11 @@ class PuffingBillyField extends WatchUi.DataField {
     }
 
     //! The rules separating the sections of the face: a curve around the
-    //! heart rate, a vertical rule between the standings, a horizontal rule
-    //! between the standings and the paces, and a vertical rule between each
-    //! pair of pace columns. Ends at the inset circle and the lower ends of
-    //! the pace-column rules fade to the background.
+    //! heart rate, a vertical rule between the ahead/behind times, a
+    //! horizontal rule between the ahead/behind row and the paces, and a
+    //! vertical rule between each pair of pace columns. Ends at the inset
+    //! circle and the lower ends of the pace-column rules fade to the
+    //! background.
     private function drawRules(
         dc as Dc, w as Number, colour as Number, bg as Number
     ) as Void {
@@ -305,8 +306,8 @@ class PuffingBillyField extends WatchUi.DataField {
         drawFadingRule(dc, mid, yRule, mid - half, yRule, colour, bg);
         drawFadingRule(dc, mid, yRule, mid + half, yRule, colour, bg);
 
-        // The vertical rule between the standings, from the curved rule's
-        // bottom to the horizontal rule.
+        // The vertical rule between the ahead/behind times, from the curved
+        // rule's bottom to the horizontal rule.
         dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
         dc.drawLine(mid, _layout.yHrRule, mid, yRule);
 
@@ -323,21 +324,22 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.setPenWidth(1);
     }
 
-    //! Colour for the time a projection is ahead of or behind the target
-    //! finishing time.
-    private function standingColour(offS as Float, dark as Boolean) as Number {
+    //! Colour for a time ahead of or behind the target finishing time.
+    private function aheadBehindColour(
+        offS as Float, dark as Boolean
+    ) as Number {
         return Fmt.ahead(offS)
             ? (dark ? AHEAD_ON_DARK : AHEAD_ON_LIGHT)
             : (dark ? BEHIND_ON_DARK : BEHIND_ON_LIGHT);
     }
 
-    //! One standing, centred on x.
-    private function drawStanding(
+    //! One ahead/behind time, centred on x.
+    private function drawAheadBehind(
         dc as Dc, x as Number, offS as Float, dark as Boolean
     ) as Void {
-        dc.setColor(standingColour(offS, dark), Graphics.COLOR_TRANSPARENT);
+        dc.setColor(aheadBehindColour(offS, dark), Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x, _layout.yStanding, _layout.figureFont, Fmt.standing(offS),
+            x, _layout.yAheadBehind, _layout.figureFont, Fmt.aheadBehind(offS),
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
         );
     }
@@ -439,10 +441,10 @@ class PuffingBillyField extends WatchUi.DataField {
         // First, so any text that reaches a rule is drawn over it.
         drawRules(dc, w, dark ? RULE_ON_DARK : RULE_ON_LIGHT, bg);
 
-        // The heart rate, with BPM centred below it, then the standings,
-        // each centred with its label on its own column: "plan" for the
-        // target-pace projection on the left, "perf" for the
-        // performance-ratio one on the right.
+        // The heart rate, with BPM centred below it, then the ahead/behind
+        // times, each centred with its label on its own column: the current
+        // time on the left and the projected time, based on the performance
+        // ratio, on the right.
         var hr = _race.heartRate;
         var hrText = hr == null ? "---" : hr.format("%d");
         dc.setColor(fg, Graphics.COLOR_TRANSPARENT);
@@ -451,19 +453,20 @@ class PuffingBillyField extends WatchUi.DataField {
         dc.setColor(labelColour, Graphics.COLOR_TRANSPARENT);
         dc.drawText(w / 2, _layout.yBpm, _layout.bpmFont, "BPM", centre);
         dc.drawText(
-            _layout.xPlan, _layout.yStandingLabel, Graphics.FONT_XTINY,
-            _standingLabels[0], centre
+            _layout.xCurrent, _layout.yAheadBehindLabel, Graphics.FONT_XTINY,
+            _aheadBehindLabels[0], centre
         );
         dc.drawText(
-            _layout.xPerf, _layout.yStandingLabel, Graphics.FONT_XTINY,
-            _standingLabels[1], centre
+            _layout.xProjected, _layout.yAheadBehindLabel, Graphics.FONT_XTINY,
+            _aheadBehindLabels[1], centre
         );
 
-        drawStanding(
-            dc, _layout.xPlan, _race.targetFinishS() - _course.planS, dark
+        drawAheadBehind(
+            dc, _layout.xCurrent, _race.targetFinishS() - _course.planS, dark
         );
-        drawStanding(
-            dc, _layout.xPerf, _race.perfRatioFinishS() - _course.planS, dark
+        drawAheadBehind(
+            dc, _layout.xProjected,
+            _race.perfRatioFinishS() - _course.planS, dark
         );
 
         // Three pace columns centred on the middle of the face, each label
@@ -554,9 +557,7 @@ class PuffingBillyField extends WatchUi.DataField {
         var w = dc.getWidth();
 
         // After the final gate, centre "Finished" on its cap height, like the
-        // pace rows. Otherwise, when the field is given half a data screen, we
-        // show a projected finish time, and given the whole screen the pace,
-        // heart rate and current segment info.
+        // pace rows.
         if (_race.finished()) {
             var font = _layout.figureFont;
             var capMid = dc.getHeight() / 2.0 + Roboto.capHeight(font) / 2.0;

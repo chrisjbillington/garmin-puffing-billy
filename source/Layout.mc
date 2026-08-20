@@ -9,7 +9,8 @@ class Layout {
 
     //! Gap between a label's baseline and the top of the digits below it, as
     //! a fraction of the label font's height. Places the pace labels above
-    //! the pace digits and the standing labels above the standings.
+    //! the pace digits and the ahead/behind labels above the ahead/behind
+    //! times.
     private const LABEL_GAP = 0.55;
 
     //! The progress bar's thickness, as a divisor of the display width. Given
@@ -50,12 +51,12 @@ class Layout {
     //! column.
     var paceColumn as Float;
 
-    //! The rows of the face. Each standing and its label are centred on one
-    //! of the two standing columns, the label the label gap above the
-    //! standing.
+    //! The rows of the face. Each ahead/behind time and its label are
+    //! centred on one of the two ahead/behind columns, the label the label
+    //! gap above the time.
     var yHr as Number;
-    var yStandingLabel as Number;
-    var yStanding as Number;
+    var yAheadBehindLabel as Number;
+    var yAheadBehind as Number;
     var yPaceLabel as Number;
     var yPaceValue as Number;
     var yBar as Number;
@@ -69,13 +70,14 @@ class Layout {
     var yKm as Number;
     var bpmFont as FontType;
 
-    //! Centres of the standings' columns: the midpoints of the two halves of
-    //! the chord at the standings' mid-ink height. Each standing and its
-    //! label are centred on one of these.
-    var xPlan as Number;
-    var xPerf as Number;
+    //! Centres of the ahead/behind columns, the current time's on the left
+    //! and the projected time's on the right: the midpoints of the two
+    //! halves of the chord at the ahead/behind times' mid-ink height. Each
+    //! time and its label are centred on one of these.
+    var xCurrent as Number;
+    var xProjected as Number;
 
-    //! The rule between the standings row and the pace row: its y, and the
+    //! The rule between the ahead/behind row and the pace row: its y, and the
     //! y at which the rules between the pace columns end.
     var yRule as Number;
     var yPaceRuleEnd as Number;
@@ -83,9 +85,9 @@ class Layout {
     //! The rule curved around the heart rate: the parabola
     //! y = yHrRule - hrRuleK * dx^2, where dx is the horizontal distance
     //! from the centre of the face. Its vertex is midway between BPM's
-    //! baseline and the standings' ink top, and where it meets the inset
-    //! circle its tangents pass through the junction of the vertical and
-    //! horizontal rules, at yRule on the centreline.
+    //! baseline and the ahead/behind times' ink top, and where it meets the
+    //! inset circle its tangents pass through the junction of the vertical
+    //! and horizontal rules, at yRule on the centreline.
     var yHrRule as Number;
     var hrRuleK as Float;
 
@@ -97,8 +99,8 @@ class Layout {
         labelPad = 3;
         paceColumn = 0.0;
         yHr = 0;
-        yStandingLabel = 0;
-        yStanding = 0;
+        yAheadBehindLabel = 0;
+        yAheadBehind = 0;
         yPaceLabel = 0;
         yPaceValue = 0;
         yBar = 0;
@@ -107,8 +109,8 @@ class Layout {
         yBpm = 0;
         yKm = 0;
         bpmFont = Graphics.FONT_XTINY;
-        xPlan = 0;
-        xPerf = 0;
+        xCurrent = 0;
+        xProjected = 0;
         yRule = 0;
         yPaceRuleEnd = 0;
         yHrRule = 0;
@@ -119,8 +121,8 @@ class Layout {
     //! gap.
     //!
     //!     A  heart rate digits, ink top to baseline
-    //!     B  standings and their labels, label x-height top to digit
-    //!        baseline; label ascenders extend above the row
+    //!     B  ahead/behind times and their labels, label x-height top to
+    //!        digit baseline; label ascenders extend above the row
     //!     C  paces and their labels, the same extents
     //!     D  the bar, excluding the position marker
     //!     E  waypoint name, cap top to baseline
@@ -193,14 +195,14 @@ class Layout {
             - barPen - nameCap) / 5.0;
         if (gap < 0.0) { gap = 0.0; }
 
-        var standingBase = hrBase + gap + labelled;
-        var paceBase = standingBase + gap + labelled;
+        var aheadBehindBase = hrBase + gap + labelled;
+        var paceBase = aheadBehindBase + gap + labelled;
         var barTop = paceBase + gap;
         var nameBase = barTop + barPen + gap + nameCap;
 
-        yStanding = Roboto.yForBaseline(standingBase, figureFont);
-        yStandingLabel = Roboto.yForBaseline(
-            standingBase - figCap - labelGap, Graphics.FONT_XTINY
+        yAheadBehind = Roboto.yForBaseline(aheadBehindBase, figureFont);
+        yAheadBehindLabel = Roboto.yForBaseline(
+            aheadBehindBase - figCap - labelGap, Graphics.FONT_XTINY
         );
         yPaceValue = Roboto.yForBaseline(paceBase, figureFont);
         yPaceLabel = Roboto.yForBaseline(
@@ -209,19 +211,19 @@ class Layout {
         yBar = (barTop + barPen / 2.0 + 0.5).toNumber();
         yName = Roboto.yForBaseline(nameBase, Graphics.FONT_TINY);
 
-        // The horizontal rule is midway between the standings' baseline and
-        // the pace labels' ink top; the pace-column rules end at the pace
-        // digits' baseline.
-        yRule = (standingBase + gap / 2.0 + 0.5).toNumber();
+        // The horizontal rule is midway between the ahead/behind times'
+        // baseline and the pace labels' ink top; the pace-column rules end
+        // at the pace digits' baseline.
+        yRule = (aheadBehindBase + gap / 2.0 + 0.5).toNumber();
         yPaceRuleEnd = (paceBase + 0.5).toNumber();
 
         // The curved rule's vertex, midway between BPM's baseline and the
-        // standings' ink top. A tangent to the parabola at dx has
+        // ahead/behind times' ink top. A tangent to the parabola at dx has
         // y-intercept yHrRule + hrRuleK * dx^2, so tangents through the rule
         // junction at yRule force the parabola to meet the inset circle at
         // yRing, as high above the vertex as the junction is below it.
         yHrRule =
-            ((bpmBase + standingBase - figCap) / 2.0 + 0.5).toNumber();
+            ((bpmBase + aheadBehindBase - figCap) / 2.0 + 0.5).toNumber();
         var yRing = 2 * yHrRule - yRule;
         var ringHalf = _face.halfWidthAt(yRing);
         hrRuleK = 0.0;
@@ -230,11 +232,11 @@ class Layout {
         }
 
         var chordHalf = _face.halfWidthAt(
-            (standingBase - figCap / 2.0 + 0.5).toNumber()
+            (aheadBehindBase - figCap / 2.0 + 0.5).toNumber()
         );
         var mid = dc.getWidth() / 2.0;
-        xPlan = (mid - chordHalf / 2.0 + 0.5).toNumber();
-        xPerf = (mid + chordHalf / 2.0 + 0.5).toNumber();
+        xCurrent = (mid - chordHalf / 2.0 + 0.5).toNumber();
+        xProjected = (mid + chordHalf / 2.0 + 0.5).toNumber();
 
         paceColumn = paceColumnOffset(dc, paceBase);
     }
