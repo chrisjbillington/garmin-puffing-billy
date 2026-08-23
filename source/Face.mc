@@ -13,7 +13,7 @@ class Face {
     //! Clearance kept from the edge of the display. The watch periodically
     //! shifts the whole display by a few pixels to limit burn-in, which
     //! occludes regions close to the edge.
-    private const SAFE_INSET = 8;
+    private const SAFE_INSET = 10;
 
     //! The display, in pixels.
     var w as Number;
