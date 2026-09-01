@@ -106,9 +106,9 @@ details. It has three sections:
   boundaries between segments
 
 - `[pacing]` - either an explicit list `paces` giving target paces for each segment, or
-  equivalent flat pacing information `flat_pace`, `split_delta`, and grade penalty/bonus
-  `uphill_penalty` and `downhill_bonus` from which per-segment grade-adjusted paces are
-  calculated
+  equivalent flat pacing information `flat_pace` and `split_delta` from which
+  per-segment paces are calculated, grade-adjusted using [Strava's grade-adjusted pace
+  (GAP) curve](https://aaron-schroeder.github.io/reverse-engineering/grade-adjusted-pace.html)
 
 - `[tracking]` - other configuration parameters used on the watch: `overdistance` and
   `perf_ratio_scale`

@@ -15,8 +15,9 @@ bearing between the two adjacent track points keeps the heading from swinging
 wildly where the course has a sharp kink in it.
 
 Target pacing is either given per segment in config.toml, or calculated from a flat
-pace, a split delta and uphill/downhill pace penalty/bonus factors read from
-config.toml. Either way it is saved in segments.json.
+pace and a split delta read from config.toml, with each segment's pace grade-adjusted
+using Strava's grade-adjusted pace (GAP) curve. Either way it is saved in
+segments.json.
 
 Also writes out/resource.json, the subset of that which goes on the watch, in the shape
 the data field wants it. See make_resource().
@@ -69,14 +70,21 @@ def format_pace(pace):
     return f"{m:.0f}:{s:02.0f}"
 
 
-def grade2pace(grade, flat_pace, uphill_penalty, downhill_bonus):
-    # Given flat pace in seconds per km and a fractional uphill/downhill penalty/bonus
-    # (percent slowdown/speedup per percent grade), return grade-adjusted pace
-    if grade > 0:
-        k = uphill_penalty
-    else:
-        k = downhill_bonus
-    return flat_pace * (1 + k * grade)
+# Grade-adjusted pace curve used by Strava, reverse-engineered by Aaron Schroeder:
+# https://aaron-schroeder.github.io/reverse-engineering/grade-adjusted-pace.html
+# Grades in percent, factors as multiples of flat pace.
+GAP_GRADES = [-45, -30, -25, -20, -15, -10, -8, -6, -4, -2, 0,
+              2, 4, 6, 8, 10, 15, 20, 25, 30, 45]
+GAP_FACTORS = [2.096, 1.495, 1.273, 1.081, 0.941, 0.876, 0.876, 0.891, 0.918, 0.960,
+               1.0, 1.055, 1.135, 1.228, 1.337, 1.459, 1.846, 2.297, 2.727, 3.158,
+               4.286]
+
+
+def grade2pace(grade, flat_pace):
+    # Given flat pace in seconds per km and a fractional grade, return grade-adjusted
+    # pace from Strava's GAP curve
+    grade_pct = np.clip(grade / percent, GAP_GRADES[0], GAP_GRADES[-1])
+    return flat_pace * float(np.interp(grade_pct, GAP_GRADES, GAP_FACTORS))
 
 
 def split2pace(distance, course_length, flat_pace, split_delta):
@@ -115,9 +123,7 @@ def segment_pace(pacing, index, midpoint, course_length, grade):
         parse_pace(pacing["flat_pace"]),
         pacing["split_delta"],
     )
-    return grade2pace(
-        grade, flat_pace, pacing["uphill_penalty"], pacing["downhill_bonus"]
-    )
+    return grade2pace(grade, flat_pace)
 
 
 def read_track(gpx_file):
