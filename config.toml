@@ -10,13 +10,15 @@
 # there are switchback sections), which would trigger end-of-segment detection
 # prematurely
 
-"Trestle Bridge Bend" = 1.200
+"Leaving Belgrave" = 0.393
+"Monbulk Creek" = 1.195
 "Selby" = 2.500
 "Aura Rd Crossing" = 3.260
 "Old Menzies Ck Rd" = 5.025
-"Menzies Ck Crossing" = 6.590
-"Menzies Rd Crest" = 7.340
-"Clematis Crossing" = 7.830
+"Menzies Crossing" = 6.590
+"Menzies Plateau" = 7.000
+"Menzies Drop" = 7.386
+"Clematis Crossing" = 7.837
 "Clematis Pub" = 8.700
 "Emerald Crossing" = 10.260
 "Lakeside" = 13.613
@@ -30,12 +32,22 @@
 # configuration in this section is ignored
 
 # paces = [
-#     "4:27", "5:50", "4:46", "4:33", "6:12",
-#     "5:16", "4:03", "4:44", "5:30", "4:34",
+#     "4:48",
+#     "4:20",
+#     "5:36",
+#     "4:47",
+#     "4:32",
+#     "5:53",
+#     "5:21",
+#     "4:45",
+#     "4:09",
+#     "4:44",
+#     "5:12",
+#     "4:30",
 # ]
 
 # The average pace you would run the course at if it were flat
-flat_pace = "4:50"
+flat_pace = "4:45"
 
 # The fractional difference in pace between the second and first half of an equivalent
 # flat course with a linear ramp in pace, i.e. -0.01 is what is usually referred to as a

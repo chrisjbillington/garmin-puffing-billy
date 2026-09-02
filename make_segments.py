@@ -31,6 +31,7 @@ import tomllib
 import xml.etree.ElementTree as ET
 
 import numpy as np
+from scipy.interpolate import CubicSpline
 
 
 km = 1000
@@ -204,15 +205,22 @@ def resample(points, distances, spacing=RESAMPLE_SPACING):
     return s, lats, lons
 
 
+def elevation_spline(points, distances):
+    """Cubic spline of elevation as a function of distance along the track."""
+    return CubicSpline(distances, [ele for _, _, ele in points])
+
+
 def position_at(points, distances, target):
     """Lat, lon and elevation the given distance in metres into the course.
 
-    A target beyond the end of the track gives the final track point.
+    Lat and lon are interpolated linearly between track points, and elevation with a
+    cubic spline. A target beyond the end of the track gives the final track point.
     """
-    return tuple(
-        np.interp(target, distances, [point[i] for point in points])
-        for i in range(3)
+    lat, lon = (
+        np.interp(target, distances, [point[i] for point in points]) for i in range(2)
     )
+    ele = elevation_spline(points, distances)(np.clip(target, 0, distances[-1]))
+    return lat, lon, float(ele)
 
 
 def heading_at(s, lats, lons, target):

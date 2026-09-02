@@ -83,18 +83,20 @@ Waypoint description
 
 The default waypoints are:
 
-| distance into course   | name    | description                                                                          |
-| :--------- | :------------------ | :----------------------------------------------------------------------------------- |
-|  1.200 km  | Trestle Bridge Bend | Bend after which the Trestle Bridge comes into view                                  |
-|  2.500 km  | Selby               | Selby township                                                                       |
-|  3.260 km  | Aura Rd Crossing    | Where the railway crosses the course on Selby-Aura Rd                                |
-|  5.025 km  | Old Menzies Ck Rd   | Corner at Old Menzies Ck Rd where the course turns to stay on Selby-Aura Rd          |
-|  6.590 km  | Menzies Ck Crossing | Where the railway crosses the course in Menzies Ck township                          |
-|  7.340 km  | Menzies Rd Crest    | Local elevation maximum of the course on Menzies Rd                                  |
-|  7.830 km  | Clematis Crossing   | Where the railway and course both cross Belgrave-Gembrook Rd in parallel in Clematis |
-|  8.700 km  | Clematis Pub        | About 100 metres after the course passes Clematis Pub                                |
-| 10.260 km  | Emerald Crossing    | Where the railway crosses the course after Emerald Railway Station                   |
-| 13.613 km  | Lakeside            | Finish line at Emerald Lake                                                          |
+| distance into course   | name    | description                                                                       |
+| :--------- | :------------------ | :-------------------------------------------------------------------------------- |
+|  0.393 km  | Leaving Belgrave    | End of the flat opening segment of the course                                     |
+|  1.195 km  | Monbulk Creek       | Where the course crosses Monbulk Creek, before the Trestle Bridge comes into view |
+|  2.500 km  | Selby               | Selby township                                                                    |
+|  3.260 km  | Aura Rd Crossing    | Where the railway crosses the course on Selby-Aura Rd                             |
+|  5.025 km  | Old Menzies Ck Rd   | Corner at Old Menzies Ck Rd where the course turns to stay on Selby-Aura Rd       |
+|  6.590 km  | Menzies Crossing    | Where the railway crosses the course in Menzies Creek township                    |
+|  7.000 km  | Menzies Plateau     | End of climb and start of flat segment on Menzies Rd                              |
+|  7.386 km  | Menzies Drop        | End of flat segment and start of steep drop on Menzies Rd                         |
+|  7.837 km  | Clematis Crossing   | Just after the railway and course both cross Belgrave-Gembrook Rd in Clematis     |
+|  8.700 km  | Clematis Pub        | About 100 metres after the course passes Clematis Pub                             |
+| 10.260 km  | Emerald Crossing    | Where the railway crosses the course after Emerald Railway Station                |
+| 13.613 km  | Lakeside            | Finish line at Emerald Lake                                                       |
 
 Configuration
 -------------

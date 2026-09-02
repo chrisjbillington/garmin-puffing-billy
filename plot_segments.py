@@ -5,9 +5,9 @@ Reads the course track from the .gpx file and the waypoints from segments.json
 endpoints given there.
 
 The map is plotted in km east/north of the start line. The elevation profile is plotted
-against distance along the course, with the elevation as recorded in the .gpx file
-alongside the straight line between each pair of waypoints, whose slope is the average
-grade of that segment - so the two can be compared by eye.
+against distance along the course, with a cubic spline through the elevations recorded
+in the .gpx file alongside the straight line between each pair of waypoints, the slope
+of which is the average grade of that segment - so the two can be compared by eye.
 """
 
 import json
@@ -23,6 +23,7 @@ from make_segments import (
     km,
     percent,
     cumulative_distances,
+    elevation_spline,
     offset,
     read_track,
 )
@@ -34,9 +35,10 @@ FIGSIZE = (11, 4.75)
 
 # Labels are drawn on one of these, so that they can be read where they overlap
 # the course or the elevation trace:
-LABEL_BBOX = {"facecolor": "white", "edgecolor": "none", "alpha": 0.9, "pad": 1}
+LABEL_BBOX = {"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1}
 
 LABEL_FONTSIZE = 9
+GRADE_FONTSIZE = 8
 
 # Gap between a waypoint marker and the start of its name, in metres of elevation:
 NAME_CLEARANCE = 10.0
@@ -87,7 +89,7 @@ def plot_course():
             f"{name}\n{waypoint['distance'] / km} km",
             (east, north),
             textcoords="offset points",
-            xytext=(0, 30 if above else -50),
+            xytext=(0, 35 if above else -55),
             ha="center",
             fontsize=LABEL_FONTSIZE,
             color="black",
@@ -98,7 +100,7 @@ def plot_course():
     ax.plot([], [], color="crimson", linewidth=2, label=f"{GATE_LENGTH:.0f} m gates")
 
     ax.set_aspect("equal")
-    ax.margins(0.06)
+    ax.margins(0.10)
     ax.set_xlabel("East of start (km)")
     ax.set_ylabel("North of start (km)")
     ax.grid(True, color="k", linestyle=":", alpha=0.5)
@@ -115,8 +117,12 @@ def plot_elevation():
     points = read_track(GPX_FILE)
     segments = json.loads(SEGMENTS_FILE.read_text('utf8'))
 
-    distance = np.array(cumulative_distances(points))
-    elevation = np.array([ele for _, _, ele in points])
+    distances = cumulative_distances(points)
+
+    # The cubic spline through the track point elevations, evaluated every metre:
+    spline = elevation_spline(points, distances)
+    distance = np.linspace(0, distances[-1], round(distances[-1]) + 1)
+    elevation = spline(distance)
 
     # The straight lines run from waypoint to waypoint, starting at the start of
     # the course. Their slope is the average grade of the segment they span:
@@ -216,6 +222,9 @@ def label_grades(ax, segment_distance, segment_ele, segment_grade):
         segment_ele[1:],
         segment_grade,
     ):
+        if round(g / percent) == 0:
+            # Don't label flat segments
+            continue
         ax.text(
             (x0 + x1) / 2 / km,
             (y0 + y1) / 2,
@@ -225,7 +234,7 @@ def label_grades(ax, segment_distance, segment_ele, segment_grade):
             rotation_mode="anchor",
             ha="center",
             va="center",
-            fontsize=LABEL_FONTSIZE,
+            fontsize=GRADE_FONTSIZE,
             color="crimson",
             bbox=LABEL_BBOX,
         )
